@@ -34,7 +34,7 @@ pipeline {
         IMAGE_NAME = 'nangman-road'
         WATCHTOWER_URL = 'http://172.16.0.37:18081'
         WATCHTOWER_TOKEN = credentials('nangman-personal-web-watchtower-token')
-        APP_HEALTH_URL = 'http://172.16.0.37:10004/api/health'
+        APP_HEALTH_URL = 'http://172.16.0.37:8787/api/health'
         DEPLOY_TIMEOUT_SECONDS = '180'
         SONARQUBE_INSTALLATION = 'sonarqube'
         SONAR_SCANNER_TOOL = 'SonarScanner'

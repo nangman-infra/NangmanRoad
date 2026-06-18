@@ -1,0 +1,68 @@
+services:
+  nangman-road:
+    image: "${NANGMAN_ROAD_IMAGE:-harbor.nangman.cloud/library/nangman-road:latest}"
+    container_name: nangman-road
+    pull_policy: always
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: "production"
+      PORT: "8787"
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-http://172.16.0.37:8787}"
+      TRUST_PROXY: "${TRUST_PROXY:-1}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-}"
+      MEASUREMENT_PROVIDER: "${MEASUREMENT_PROVIDER:-globalping}"
+      GLOBALPING_TOKEN: "${GLOBALPING_TOKEN:-}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-8}"
+      RATE_LIMIT_PER_HOUR: "${RATE_LIMIT_PER_HOUR:-80}"
+      SESSION_TTL_MS: "${SESSION_TTL_MS:-900000}"
+      FINISHED_SESSION_TTL_MS: "${FINISHED_SESSION_TTL_MS:-120000}"
+      MAX_SESSIONS: "${MAX_SESSIONS:-500}"
+    ports:
+      - "8787:8787"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:' + (process.env.PORT || '8787') + '/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - nangman-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.scope=nangman-personal-web"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: nangman-road-watchtower
+    command:
+      - --http-api-update
+      - --cleanup
+      - --label-enable
+      - --scope
+      - nangman-personal-web
+      - --interval
+      - "0"
+      - --api-version
+      - "1.44"
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: "${WATCHTOWER_TOKEN:-}"
+      WATCHTOWER_SCOPE: "nangman-personal-web"
+    ports:
+      - "18081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks:
+      - nangman-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+      - "com.centurylinklabs.watchtower.scope=nangman-personal-web"
+
+networks:
+  nangman-network:
+    driver: bridge
