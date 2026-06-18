@@ -11,24 +11,18 @@ let cachedIndexHtml: Promise<string> | undefined;
 
 function escapeHtml(value: string) {
   return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function escapeXml(value: string) {
-  return escapeHtml(value).replaceAll("'", "&apos;");
+  return escapeHtml(value).replace(/'/g, "&apos;");
 }
 
 function trimTrailingSlash(value: string) {
-  let endIndex = value.length;
-
-  while (endIndex > 0 && value[endIndex - 1] === "/") {
-    endIndex -= 1;
-  }
-
-  return value.slice(0, endIndex);
+  return value.replace(/\/+$/, "");
 }
 
 function configuredSiteUrl() {
@@ -103,22 +97,11 @@ function dynamicHead(req: Request, res: Response) {
   ].join("\n    ");
 }
 
-function insertDynamicHead(html: string, head: string) {
-  const marker = "</head>";
-  const markerIndex = html.indexOf(marker);
-
-  if (markerIndex === -1) {
-    return html;
-  }
-
-  return `${html.slice(0, markerIndex)}    ${head}\n  ${html.slice(markerIndex)}`;
-}
-
 export async function sendIndexHtml(req: Request, res: Response, indexPath: string) {
   cachedIndexHtml ??= readFile(indexPath, "utf8");
   const html = await cachedIndexHtml;
 
-  res.type("html").send(insertDynamicHead(html, dynamicHead(req, res)));
+  res.type("html").send(html.replace("</head>", `    ${dynamicHead(req, res)}\n  </head>`));
 }
 
 export function sendRobotsTxt(req: Request, res: Response) {

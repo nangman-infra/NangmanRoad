@@ -20,105 +20,66 @@ function guessCountry(visitor?: VisitorContext) {
   return { city: "Nearest available city", country: "Estimated region", asn: "Nearby probe network" };
 }
 
-function sourceEstimate(origin: ReturnType<typeof guessCountry>) {
-  const isSeoul = origin.country === "South Korea";
-
-  return {
-    city: origin.city,
-    country: origin.country,
-    latitude: isSeoul ? 37.57 : undefined,
-    longitude: isSeoul ? 126.98 : undefined,
-    locationConfidence: isSeoul ? "medium" as const : "low" as const,
-    locationSource: isSeoul ? "source_probe" as const : "unknown" as const,
-    locationPrecision: isSeoul ? "metro" as const : "unknown" as const,
-    locationEvidence: ["demo source estimate"]
-  };
-}
-
-function demoTargetAsn(target: string) {
-  if (target.includes("google")) {
-    return "AS15169";
-  }
-
-  if (target === "1.1.1.1") {
-    return "AS13335";
-  }
-
-  return "AS8560";
-}
-
-function demoTargetIp(target: string) {
-  return target === "1.1.1.1" ? "1.1.1.1" : "192.0.2.80";
-}
-
-function demoHop(params: {
-  asn: string;
-  city?: string;
-  country?: string;
-  hostname: string;
-  hopNumber: number;
-  ip: string;
-  jitterMs: number;
-  packetLossPercent: number;
-  rttMs: number;
-  status: HopResult["status"];
-  source?: ReturnType<typeof sourceEstimate>;
-}): HopResult {
-  return {
-    hopNumber: params.hopNumber,
-    asn: params.asn,
-    hostname: params.hostname,
-    ip: params.ip,
-    city: params.city,
-    country: params.country,
-    ...params.source,
-    rttMs: params.rttMs,
-    jitterMs: params.jitterMs,
-    packetLossPercent: params.packetLossPercent,
-    status: params.status
-  };
-}
-
 function buildDemoHops(target: string, mode: TraceMode, visitor?: VisitorContext): HopResult[] {
   const origin = guessCountry(visitor);
   const base = target === "1.1.1.1" ? 13 : target.includes("google") ? 22 : 31;
-  const source = sourceEstimate(origin);
 
   return [
-    demoHop({
+    {
       hopNumber: 1,
       asn: "AS???",
       hostname: "nearby-probe.local",
       ip: "10.18.0.1",
-      source,
+      city: origin.city,
+      country: origin.country,
+      latitude: origin.country === "South Korea" ? 37.57 : undefined,
+      longitude: origin.country === "South Korea" ? 126.98 : undefined,
+      locationConfidence: origin.country === "South Korea" ? "medium" : "low",
+      locationSource: origin.country === "South Korea" ? "source_probe" : "unknown",
+      locationPrecision: origin.country === "South Korea" ? "metro" : "unknown",
+      locationEvidence: ["demo source estimate"],
       rttMs: base,
       jitterMs: 2,
       packetLossPercent: 0,
       status: "ok"
-    }),
-    demoHop({
+    },
+    {
       hopNumber: 2,
       asn: "AS???",
       hostname: "edge-gateway.net",
       ip: "172.18.42.1",
-      source,
+      city: origin.city,
+      country: origin.country,
+      latitude: origin.country === "South Korea" ? 37.57 : undefined,
+      longitude: origin.country === "South Korea" ? 126.98 : undefined,
+      locationConfidence: origin.country === "South Korea" ? "medium" : "low",
+      locationSource: origin.country === "South Korea" ? "source_probe" : "unknown",
+      locationPrecision: origin.country === "South Korea" ? "metro" : "unknown",
+      locationEvidence: ["demo source estimate"],
       rttMs: base + 6,
       jitterMs: 3,
       packetLossPercent: 0,
       status: "ok"
-    }),
-    demoHop({
+    },
+    {
       hopNumber: 3,
       asn: "AS64512",
       hostname: "regional-exchange.net",
       ip: "203.0.113.14",
-      source,
+      city: origin.city,
+      country: origin.country,
+      latitude: origin.country === "South Korea" ? 37.57 : undefined,
+      longitude: origin.country === "South Korea" ? 126.98 : undefined,
+      locationConfidence: origin.country === "South Korea" ? "medium" : "low",
+      locationSource: origin.country === "South Korea" ? "source_probe" : "unknown",
+      locationPrecision: origin.country === "South Korea" ? "metro" : "unknown",
+      locationEvidence: ["demo source estimate"],
       rttMs: base + 18,
       jitterMs: 5,
       packetLossPercent: mode === "mtr" ? 1 : 0,
       status: "ok"
-    }),
-    demoHop({
+    },
+    {
       hopNumber: 4,
       asn: "AS3356",
       hostname: "transit-backbone.example",
@@ -129,19 +90,19 @@ function buildDemoHops(target: string, mode: TraceMode, visitor?: VisitorContext
       jitterMs: 9,
       packetLossPercent: mode === "mtr" ? 2 : 0,
       status: "slow"
-    }),
-    demoHop({
+    },
+    {
       hopNumber: 5,
-      asn: demoTargetAsn(target),
+      asn: target.includes("google") ? "AS15169" : target === "1.1.1.1" ? "AS13335" : "AS8560",
       hostname: `edge.${target}`,
-      ip: demoTargetIp(target),
+      ip: target === "1.1.1.1" ? "1.1.1.1" : "192.0.2.80",
       city: "Destination edge",
       country: "Target network",
       rttMs: base + 58,
       jitterMs: 6,
       packetLossPercent: 0,
       status: "ok"
-    })
+    }
   ];
 }
 

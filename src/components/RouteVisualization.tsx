@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import { Activity, RadioTower } from "lucide-react";
 import type { HopResult, MeasurementSource, MeasurementStatus, TraceMode } from "../../shared/types";
@@ -71,11 +71,11 @@ function markerColor(status: GeoPoint["status"]) {
 
 function escapeHtml(value: string) {
   return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#039;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function formatHopCount(count?: number) {
@@ -747,208 +747,6 @@ function routeLatLngs(points: GeoPoint[]) {
   return points.map((point) => L.latLng(point.lat, point.lng));
 }
 
-function routeColors(theme: RouteVisualizationProps["theme"]) {
-  return {
-    casing: theme === "light" ? "#fbfdff" : "#d5f8ff",
-    glow: theme === "light" ? "#dff7fc" : "#d4f8ff",
-    line: theme === "light" ? "#68c8e2" : "#aeeaf5"
-  };
-}
-
-function routeSpan(bounds: L.LatLngBounds) {
-  return Math.max(
-    Math.abs(bounds.getEast() - bounds.getWest()),
-    Math.abs(bounds.getNorth() - bounds.getSouth())
-  );
-}
-
-function maxRouteZoom(span: number) {
-  if (span > 80) {
-    return 3.75;
-  }
-
-  if (span > 55) {
-    return 4.15;
-  }
-
-  return span > 28 ? 4.85 : 6.25;
-}
-
-function fitRouteToBounds(params: {
-  animate: boolean;
-  bounds: L.LatLngBounds;
-  fittedRouteKeyRef: MutableRefObject<string>;
-  map: L.Map;
-  markFitted: boolean;
-  routeSpan: number;
-  routeViewKey: string;
-}) {
-  params.map.invalidateSize({ animate: false, pan: false });
-  params.map.fitBounds(params.bounds.pad(params.routeSpan > 55 ? 0.12 : 0.2), {
-    animate: params.animate,
-    duration: params.animate ? 0.55 : 0,
-    maxZoom: maxRouteZoom(params.routeSpan),
-    paddingTopLeft: [110, 118],
-    paddingBottomRight: [110, 112]
-  });
-
-  if (params.markFitted) {
-    params.fittedRouteKeyRef.current = params.routeViewKey;
-  }
-}
-
-function scheduleRouteFit(params: {
-  bounds: L.LatLngBounds;
-  fittedRouteKeyRef: MutableRefObject<string>;
-  map: L.Map;
-  routeSpan: number;
-  routeViewKey: string;
-}) {
-  let fitTimeout = 0;
-  const fitFrame = window.requestAnimationFrame(() => {
-    fitRouteToBounds({ ...params, animate: true, markFitted: true });
-    fitTimeout = window.setTimeout(() => {
-      fitRouteToBounds({ ...params, animate: true, markFitted: true });
-    }, 180);
-  });
-
-  return () => {
-    window.cancelAnimationFrame(fitFrame);
-    window.clearTimeout(fitTimeout);
-  };
-}
-
-function scheduleSinglePointFit(params: {
-  fittedRouteKeyRef: MutableRefObject<string>;
-  latLng?: L.LatLng;
-  map: L.Map;
-  routeViewKey: string;
-}) {
-  const frame = window.requestAnimationFrame(() => {
-    params.map.invalidateSize({ animate: false, pan: false });
-    params.map.setView(params.latLng ?? L.latLng(24, 20), 3, { animate: true });
-    params.fittedRouteKeyRef.current = params.routeViewKey;
-  });
-
-  return () => window.cancelAnimationFrame(frame);
-}
-
-function addRouteLines(params: {
-  latLngs: L.LatLng[];
-  layer: L.LayerGroup;
-  theme: RouteVisualizationProps["theme"];
-}) {
-  const colors = routeColors(params.theme);
-
-  L.polyline(params.latLngs, {
-    color: colors.casing,
-    weight: params.theme === "light" ? 3.2 : 2.8,
-    opacity: params.theme === "light" ? 0.46 : 0.14,
-    smoothFactor: 2,
-    className: "packet-map-route-casing"
-  }).addTo(params.layer);
-
-  L.polyline(params.latLngs, {
-    color: colors.glow,
-    weight: params.theme === "light" ? 2.2 : 2,
-    opacity: params.theme === "light" ? 0.08 : 0.1,
-    smoothFactor: 2,
-    className: "packet-map-route-shadow"
-  }).addTo(params.layer);
-
-  L.polyline(params.latLngs, {
-    color: colors.line,
-    weight: params.theme === "light" ? 1.55 : 1.5,
-    opacity: params.theme === "light" ? 0.72 : 0.64,
-    smoothFactor: 2,
-    className: "packet-map-route"
-  }).addTo(params.layer);
-}
-
-function setMinimumZoom(map: L.Map, width: number) {
-  const nextMinZoom = minimumWorldZoom(width);
-  const isAtMinimumZoom = map.getZoom() <= map.getMinZoom() + 0.01;
-
-  map.setMinZoom(nextMinZoom);
-
-  if (isAtMinimumZoom || map.getZoom() < nextMinZoom) {
-    map.setView(FLAT_MAP_CENTER, nextMinZoom, { animate: false });
-    map.stop();
-  }
-}
-
-function observeRouteResize(container: HTMLDivElement, map: L.Map) {
-  let resizeTimeout = 0;
-  let observedSize = {
-    height: container.clientHeight,
-    width: container.clientWidth
-  };
-
-  setMinimumZoom(map, observedSize.width);
-
-  if (typeof ResizeObserver === "undefined") {
-    return () => undefined;
-  }
-
-  const resizeObserver = new ResizeObserver((entries) => {
-    const nextSize = entries[0]?.contentRect;
-
-    if (!nextSize) {
-      return;
-    }
-
-    const widthDelta = Math.abs(nextSize.width - observedSize.width);
-    const heightDelta = Math.abs(nextSize.height - observedSize.height);
-
-    if (widthDelta < 1 && heightDelta < 1) {
-      return;
-    }
-
-    observedSize = {
-      height: nextSize.height,
-      width: nextSize.width
-    };
-
-    setMinimumZoom(map, nextSize.width);
-    window.clearTimeout(resizeTimeout);
-    resizeTimeout = window.setTimeout(() => {
-      map.invalidateSize({ animate: false, pan: false });
-    }, 140);
-  });
-
-  resizeObserver.observe(container);
-
-  return () => {
-    window.clearTimeout(resizeTimeout);
-    resizeObserver.disconnect();
-  };
-}
-
-function tooltipHtml(point: GeoPoint) {
-  const meta = point.subLabel ? `<div class="packet-map-tooltip__meta">${escapeHtml(point.subLabel)}</div>` : "";
-
-  return `<div class="packet-map-tooltip__title">${escapeHtml(point.label)}</div>
-         ${meta}
-        `;
-}
-
-function addRouteMarkers(layer: L.LayerGroup, routePoints: GeoPoint[]) {
-  routePoints.forEach((point) => {
-    const marker = L.marker([point.lat, point.lng], {
-      icon: markerIcon(point),
-      keyboard: false,
-      zIndexOffset: point.role === "target" ? 900 : point.role === "source" ? 800 : 100 + (point.sequence ?? 0)
-    }).addTo(layer);
-
-    marker.bindTooltip(tooltipHtml(point), {
-      direction: "top",
-      offset: [0, point.role === "transit" ? -10 : -18],
-      opacity: 0.95,
-      className: "packet-map-tooltip"
-    });
-  });
-}
-
 const FLAT_MAP_WEST = -180;
 const FLAT_MAP_EAST = 180;
 const FLAT_MAP_CENTER = L.latLng(0, 8);
@@ -1147,8 +945,10 @@ export function RouteVisualization({ mode, status, target, hops, source, theme }
       return;
     }
 
-    let cancelFit: () => void = () => {};
-    let cleanupResize: () => void = () => {};
+    let fitFrame = 0;
+    let fitTimeout = 0;
+    let resizeTimeout = 0;
+    let resizeObserver: ResizeObserver | undefined;
     layerRef.current?.remove();
 
     const layer = L.layerGroup().addTo(map);
@@ -1156,40 +956,155 @@ export function RouteVisualization({ mode, status, target, hops, source, theme }
     const latLngs = routeLatLngs(routePoints);
     const focusLatLngs = routePoints.map((point) => L.latLng(point.lat, point.lng));
     const shouldFitRoute = routeViewKey !== fittedRouteKeyRef.current;
-
+    const routeColor = theme === "light" ? "#68c8e2" : "#aeeaf5";
+    const routeGlowColor = theme === "light" ? "#dff7fc" : "#d4f8ff";
+    const routeCasingColor = theme === "light" ? "#fbfdff" : "#d5f8ff";
     if (latLngs.length > 1) {
       const focusBounds = L.latLngBounds(focusLatLngs.length > 1 ? focusLatLngs : latLngs);
-      const span = routeSpan(focusBounds);
+      const routeSpan = Math.max(
+        Math.abs(focusBounds.getEast() - focusBounds.getWest()),
+        Math.abs(focusBounds.getNorth() - focusBounds.getSouth())
+      );
+      const fitRoute = (animate = true, markFitted = true) => {
+        map.invalidateSize({ animate: false, pan: false });
+        const paddedBounds = focusBounds.pad(routeSpan > 55 ? 0.12 : 0.2);
+        const maxRouteZoom = routeSpan > 80 ? 3.75 : routeSpan > 55 ? 4.15 : routeSpan > 28 ? 4.85 : 6.25;
 
-      addRouteLines({ latLngs, layer, theme });
+        map.fitBounds(paddedBounds, {
+          animate,
+          duration: animate ? 0.55 : 0,
+          maxZoom: maxRouteZoom,
+          paddingTopLeft: [110, 118],
+          paddingBottomRight: [110, 112]
+        });
+
+        if (markFitted) {
+          fittedRouteKeyRef.current = routeViewKey;
+        }
+      };
+
+      L.polyline(latLngs, {
+        color: routeCasingColor,
+        weight: theme === "light" ? 3.2 : 2.8,
+        opacity: theme === "light" ? 0.46 : 0.14,
+        smoothFactor: 2,
+        className: "packet-map-route-casing"
+      }).addTo(layer);
+
+      L.polyline(latLngs, {
+        color: routeGlowColor,
+        weight: theme === "light" ? 2.2 : 2,
+        opacity: theme === "light" ? 0.08 : 0.1,
+        smoothFactor: 2,
+        className: "packet-map-route-shadow"
+      }).addTo(layer);
+
+      L.polyline(latLngs, {
+        color: routeColor,
+        weight: theme === "light" ? 1.55 : 1.5,
+        opacity: theme === "light" ? 0.72 : 0.64,
+        smoothFactor: 2,
+        className: "packet-map-route"
+      }).addTo(layer);
 
       if (shouldFitRoute) {
-        cancelFit = scheduleRouteFit({
-          bounds: focusBounds,
-          fittedRouteKeyRef,
-          map,
-          routeSpan: span,
-          routeViewKey
+        fitFrame = window.requestAnimationFrame(() => {
+          fitRoute();
+          fitTimeout = window.setTimeout(() => {
+            fitRoute();
+          }, 180);
         });
       }
 
-      if (containerRef.current) {
-        cleanupResize = observeRouteResize(containerRef.current, map);
+      if (containerRef.current && typeof ResizeObserver !== "undefined") {
+        const updateMinimumZoom = (width: number) => {
+          const nextMinZoom = minimumWorldZoom(width);
+          const isAtMinimumZoom = map.getZoom() <= map.getMinZoom() + 0.01;
+
+          map.setMinZoom(nextMinZoom);
+
+          if (isAtMinimumZoom || map.getZoom() < nextMinZoom) {
+            map.setView(FLAT_MAP_CENTER, nextMinZoom, { animate: false });
+            map.stop();
+          }
+        };
+        let observedSize = {
+          height: containerRef.current.clientHeight,
+          width: containerRef.current.clientWidth
+        };
+
+        updateMinimumZoom(observedSize.width);
+
+        resizeObserver = new ResizeObserver((entries) => {
+          const nextSize = entries[0]?.contentRect;
+
+          if (!nextSize) {
+            return;
+          }
+
+          const widthDelta = Math.abs(nextSize.width - observedSize.width);
+          const heightDelta = Math.abs(nextSize.height - observedSize.height);
+
+          if (widthDelta < 1 && heightDelta < 1) {
+            return;
+          }
+
+          observedSize = {
+            height: nextSize.height,
+            width: nextSize.width
+          };
+
+          updateMinimumZoom(nextSize.width);
+          window.clearTimeout(resizeTimeout);
+          resizeTimeout = window.setTimeout(() => {
+            map.invalidateSize({ animate: false, pan: false });
+          }, 140);
+        });
+        resizeObserver.observe(containerRef.current);
       }
     } else if (shouldFitRoute) {
-      cancelFit = scheduleSinglePointFit({
-        fittedRouteKeyRef,
-        latLng: latLngs[0],
-        map,
-        routeViewKey
+      fitFrame = window.requestAnimationFrame(() => {
+        map.invalidateSize({ animate: false, pan: false });
+        map.setView(latLngs[0] ?? L.latLng(24, 20), 3, { animate: true });
+        fittedRouteKeyRef.current = routeViewKey;
       });
     }
 
-    addRouteMarkers(layer, routePoints);
+    routePoints.forEach((point) => {
+      const marker = L.marker([point.lat, point.lng], {
+        icon: markerIcon(point),
+        keyboard: false,
+        zIndexOffset: point.role === "target" ? 900 : point.role === "source" ? 800 : 100 + (point.sequence ?? 0)
+      }).addTo(layer);
+
+      marker.bindTooltip(
+        `<div class="packet-map-tooltip__title">${escapeHtml(point.label)}</div>
+         ${
+           point.subLabel
+             ? `<div class="packet-map-tooltip__meta">${escapeHtml(point.subLabel)}</div>`
+             : ""
+         }
+        `,
+        {
+          direction: "top",
+          offset: [0, point.role === "transit" ? -10 : -18],
+          opacity: 0.95,
+          className: "packet-map-tooltip"
+        }
+      );
+    });
 
     return () => {
-      cancelFit();
-      cleanupResize();
+      if (fitFrame) {
+        window.cancelAnimationFrame(fitFrame);
+      }
+      if (fitTimeout) {
+        window.clearTimeout(fitTimeout);
+      }
+      if (resizeTimeout) {
+        window.clearTimeout(resizeTimeout);
+      }
+      resizeObserver?.disconnect();
       layer.remove();
     };
   }, [mode, routePoints, routeViewKey, theme]);

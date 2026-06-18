@@ -9,7 +9,6 @@ import type {
 } from "../shared/types";
 
 type GeoSource = Exclude<HopLocationSource, "source_probe" | "unknown">;
-type GeoProvider = "none" | "ipinfo" | "ip-api";
 
 interface GeoPoint {
   city: string;
@@ -37,7 +36,6 @@ interface IpGeoRecord {
 
 const GEO_TIMEOUT_MS = Number(process.env.GEOIP_TIMEOUT_MS ?? 1_400);
 const REVERSE_DNS_TIMEOUT_MS = Number(process.env.REVERSE_DNS_TIMEOUT_MS ?? 900);
-const ASN_PATTERN = /\bAS\s*(\d+)\b/i;
 const geoCache = new Map<string, Promise<IpGeoRecord | undefined>>();
 const reverseCache = new Map<string, Promise<string | undefined>>();
 
@@ -153,58 +151,9 @@ function normalizeAsn(value?: string) {
     return undefined;
   }
 
-  const match = ASN_PATTERN.exec(value);
+  const match = value.match(/\bAS\s*(\d+)\b/i);
 
   return match ? `AS${match[1]}` : undefined;
-}
-
-function removeLeadingTrailingDigits(value: string) {
-  let startIndex = 0;
-  let endIndex = value.length;
-
-  while (startIndex < endIndex && /\d/.test(value[startIndex])) {
-    startIndex += 1;
-  }
-
-  while (endIndex > startIndex && /\d/.test(value[endIndex - 1])) {
-    endIndex -= 1;
-  }
-
-  return value.slice(startIndex, endIndex);
-}
-
-function stripAsPrefix(value?: string) {
-  if (!value) {
-    return undefined;
-  }
-
-  const trimmed = value.trimStart();
-
-  if (!trimmed.toUpperCase().startsWith("AS")) {
-    return value;
-  }
-
-  let endIndex = 2;
-
-  while (endIndex < trimmed.length && /\d/.test(trimmed[endIndex])) {
-    endIndex += 1;
-  }
-
-  if (endIndex === 2 || trimmed[endIndex] !== " ") {
-    return value;
-  }
-
-  return trimmed.slice(endIndex).trimStart();
-}
-
-function trimTrailingPathSlash(value: string) {
-  let endIndex = value.length;
-
-  while (endIndex > 0 && value[endIndex - 1] === "/") {
-    endIndex -= 1;
-  }
-
-  return value.slice(0, endIndex);
 }
 
 function finite(value: unknown): number | undefined {
@@ -249,15 +198,14 @@ function isPublicIp(ip?: string): ip is string {
 function tokeniseHostname(hostname: string) {
   return hostname
     .toLowerCase()
-    .replaceAll("(", " ")
-    .replaceAll(")", " ")
+    .replace(/\(([^)]+)\)/g, " $1 ")
     .split(/[.\s_-]+/)
-    .map(removeLeadingTrailingDigits)
+    .map((token) => token.replace(/^\d+/, "").replace(/\d+$/, ""))
     .filter(Boolean);
 }
 
 function aliasMatchesHostname(alias: string, normalizedHost: string, tokens: string[]) {
-  const compactAlias = alias.replaceAll("-", "");
+  const compactAlias = alias.replace(/-/g, "");
   const tokenMatch = tokens.some((token) => {
     if (token === alias || token === compactAlias) {
       return true;
@@ -282,7 +230,7 @@ function inferCityFromHostname(hostname?: string): GeoCandidate | undefined {
     return undefined;
   }
 
-  const normalizedHost = hostname.toLowerCase().split(/\s+/).join("");
+  const normalizedHost = hostname.toLowerCase().replace(/\s+/g, "");
   const tokens = tokeniseHostname(hostname);
 
   for (const city of cityHints) {
@@ -391,7 +339,7 @@ async function fetchIpInfo(ip: string): Promise<IpGeoRecord | undefined> {
 
     return {
       asn: normalizeAsn(org),
-      asName: stripAsPrefix(org),
+      asName: org?.replace(/^AS\d+\s+/i, ""),
       city: typeof data.city === "string" ? data.city : undefined,
       country: typeof data.country === "string" ? data.country : undefined,
       hostname: typeof data.hostname === "string" ? data.hostname : undefined,
@@ -406,21 +354,11 @@ async function fetchIpInfo(ip: string): Promise<IpGeoRecord | undefined> {
 }
 
 async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
-  const configuredUrl = process.env.IP_API_URL?.trim();
-
-  if (!configuredUrl) {
-    return undefined;
-  }
-
   const timer = timeoutSignal(GEO_TIMEOUT_MS);
 
   try {
     const fields = "status,message,country,countryCode,city,lat,lon,as,asname,reverse,query";
-    const url = new URL(configuredUrl);
-    url.pathname = `${trimTrailingPathSlash(url.pathname)}/json/${encodeURIComponent(ip)}`;
-    url.searchParams.set("fields", fields);
-
-    const response = await fetch(url, {
+    const response = await fetch(`http://ip-api.com/json/${ip}?fields=${fields}`, {
       signal: timer.signal,
       headers: { accept: "application/json" }
     });
@@ -439,7 +377,7 @@ async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
 
     return {
       asn: normalizeAsn(asText),
-      asName: typeof data.asname === "string" ? data.asname : stripAsPrefix(asText),
+      asName: typeof data.asname === "string" ? data.asname : asText?.replace(/^AS\d+\s+/i, ""),
       city: typeof data.city === "string" ? data.city : undefined,
       country: typeof data.countryCode === "string" ? data.countryCode : typeof data.country === "string" ? data.country : undefined,
       hostname: typeof data.reverse === "string" ? data.reverse : undefined,
@@ -453,14 +391,6 @@ async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
   }
 }
 
-export function resolveGeoProvider(env: NodeJS.ProcessEnv = process.env): GeoProvider {
-  if (env.GEOIP_PROVIDER === "none" || env.GEOIP_PROVIDER === "ipinfo" || env.GEOIP_PROVIDER === "ip-api") {
-    return env.GEOIP_PROVIDER;
-  }
-
-  return env.IPINFO_TOKEN ? "ipinfo" : "none";
-}
-
 async function lookupIpGeo(ip?: string) {
   if (!isPublicIp(ip)) {
     return undefined;
@@ -469,7 +399,7 @@ async function lookupIpGeo(ip?: string) {
   const publicIp = ip;
 
   if (!geoCache.has(publicIp)) {
-    const provider = resolveGeoProvider();
+    const provider = process.env.GEOIP_PROVIDER ?? (process.env.IPINFO_TOKEN ? "ipinfo" : "ip-api");
 
     geoCache.set(
       publicIp,
@@ -530,12 +460,7 @@ function distanceKm(a: Pick<GeoPoint, "latitude" | "longitude">, b: Pick<GeoPoin
 }
 
 function normalizeCityName(city?: string) {
-  return city
-    ?.toLowerCase()
-    .replaceAll(".", " ")
-    .replaceAll("_", " ")
-    .replaceAll("-", " ")
-    .trim();
+  return city?.toLowerCase().replace(/[._-]+/g, " ").trim();
 }
 
 function normalizeCountryName(country?: string) {

@@ -17,62 +17,35 @@ const RESERVED_DOMAIN_SUFFIXES = [
   ".invalid"
 ];
 const RESERVED_DOMAINS = new Set(["localhost", "localdomain"]);
-const BLOCKED_IPV4_CIDRS: Array<[string, number]> = [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-  ["255.255.255.255", 32]
-];
-const blockedIpv6Ranges = new net.BlockList();
+const blockedIpRanges = new net.BlockList();
 
-blockedIpv6Ranges.addAddress("::", "ipv6");
-blockedIpv6Ranges.addAddress("::1", "ipv6");
-blockedIpv6Ranges.addSubnet("::ffff:0:0", 96, "ipv6");
-blockedIpv6Ranges.addSubnet("64:ff9b::", 96, "ipv6");
-blockedIpv6Ranges.addSubnet("100::", 64, "ipv6");
-blockedIpv6Ranges.addSubnet("2001:db8::", 32, "ipv6");
-blockedIpv6Ranges.addSubnet("fc00::", 7, "ipv6");
-blockedIpv6Ranges.addSubnet("fe80::", 10, "ipv6");
-blockedIpv6Ranges.addSubnet("ff00::", 8, "ipv6");
+blockedIpRanges.addSubnet("0.0.0.0", 8, "ipv4");
+blockedIpRanges.addSubnet("10.0.0.0", 8, "ipv4");
+blockedIpRanges.addSubnet("100.64.0.0", 10, "ipv4");
+blockedIpRanges.addSubnet("127.0.0.0", 8, "ipv4");
+blockedIpRanges.addSubnet("169.254.0.0", 16, "ipv4");
+blockedIpRanges.addSubnet("172.16.0.0", 12, "ipv4");
+blockedIpRanges.addSubnet("192.0.0.0", 24, "ipv4");
+blockedIpRanges.addSubnet("192.0.2.0", 24, "ipv4");
+blockedIpRanges.addSubnet("192.168.0.0", 16, "ipv4");
+blockedIpRanges.addSubnet("198.18.0.0", 15, "ipv4");
+blockedIpRanges.addSubnet("198.51.100.0", 24, "ipv4");
+blockedIpRanges.addSubnet("203.0.113.0", 24, "ipv4");
+blockedIpRanges.addSubnet("224.0.0.0", 4, "ipv4");
+blockedIpRanges.addSubnet("240.0.0.0", 4, "ipv4");
+blockedIpRanges.addAddress("255.255.255.255", "ipv4");
+blockedIpRanges.addAddress("::", "ipv6");
+blockedIpRanges.addAddress("::1", "ipv6");
+blockedIpRanges.addSubnet("::ffff:0:0", 96, "ipv6");
+blockedIpRanges.addSubnet("64:ff9b::", 96, "ipv6");
+blockedIpRanges.addSubnet("100::", 64, "ipv6");
+blockedIpRanges.addSubnet("2001:db8::", 32, "ipv6");
+blockedIpRanges.addSubnet("fc00::", 7, "ipv6");
+blockedIpRanges.addSubnet("fe80::", 10, "ipv6");
+blockedIpRanges.addSubnet("ff00::", 8, "ipv6");
 
 function isReservedDomain(target: string) {
   return RESERVED_DOMAINS.has(target) || RESERVED_DOMAIN_SUFFIXES.some((suffix) => target.endsWith(suffix));
-}
-
-function ipv4ToNumber(ip: string) {
-  const octets = ip.split(".").map((part) => Number(part));
-
-  if (octets.length !== 4 || !octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)) {
-    return undefined;
-  }
-
-  return octets.reduce((value, octet) => value * 256 + octet, 0);
-}
-
-function isBlockedIpv4(target: string) {
-  const targetNumber = ipv4ToNumber(target);
-
-  if (targetNumber === undefined) {
-    return true;
-  }
-
-  return BLOCKED_IPV4_CIDRS.some(([base, prefix]) => {
-    const baseNumber = ipv4ToNumber(base);
-    const blockSize = 2 ** (32 - prefix);
-
-    return baseNumber !== undefined && Math.floor(targetNumber / blockSize) === Math.floor(baseNumber / blockSize);
-  });
 }
 
 function assertPublicIp(target: string) {
@@ -82,9 +55,9 @@ function assertPublicIp(target: string) {
     return;
   }
 
-  const blocked = ipVersion === 4 ? isBlockedIpv4(target) : blockedIpv6Ranges.check(target, "ipv6");
+  const ipType = ipVersion === 4 ? "ipv4" : "ipv6";
 
-  if (blocked) {
+  if (blockedIpRanges.check(target, ipType)) {
     throw new Error("Enter a public domain or public IP address.");
   }
 }
