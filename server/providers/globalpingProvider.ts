@@ -393,45 +393,62 @@ function normalizeStatus(rttMs?: number, loss?: number): HopResult["status"] {
   return "ok";
 }
 
-function rttValues(rawHop: string) {
-  const values: number[] = [];
+function decimalEndIndex(value: string, startIndex: number) {
+  let endIndex = startIndex;
+  let decimalPoints = 0;
 
-  for (let index = 0; index < rawHop.length; index += 1) {
-    if (!isAsciiDigit(rawHop[index])) {
+  while (endIndex < value.length) {
+    const character = value[endIndex];
+
+    if (isAsciiDigit(character)) {
+      endIndex += 1;
       continue;
     }
 
-    let endIndex = index;
-    let decimalPoints = 0;
-
-    while (endIndex < rawHop.length) {
-      const character = rawHop[endIndex];
-
-      if (isAsciiDigit(character)) {
-        endIndex += 1;
-        continue;
-      }
-
-      if (character === "." && decimalPoints === 0) {
-        decimalPoints += 1;
-        endIndex += 1;
-        continue;
-      }
-
-      break;
+    if (character === "." && decimalPoints === 0) {
+      decimalPoints += 1;
+      endIndex += 1;
+      continue;
     }
 
-    let unitIndex = endIndex;
+    break;
+  }
 
-    while (unitIndex < rawHop.length && isWhitespace(rawHop[unitIndex])) {
-      unitIndex += 1;
+  return endIndex;
+}
+
+function whitespaceEndIndex(value: string, startIndex: number) {
+  let endIndex = startIndex;
+
+  while (endIndex < value.length && isWhitespace(value[endIndex])) {
+    endIndex += 1;
+  }
+
+  return endIndex;
+}
+
+function hasMillisecondsUnitAt(value: string, index: number) {
+  return value[index]?.toLowerCase() === "m" && value[index + 1]?.toLowerCase() === "s";
+}
+
+function rttValues(rawHop: string) {
+  const values: number[] = [];
+  let cursor = 0;
+
+  while (cursor < rawHop.length) {
+    if (!isAsciiDigit(rawHop[cursor])) {
+      cursor += 1;
+      continue;
     }
 
-    if (rawHop[unitIndex]?.toLowerCase() === "m" && rawHop[unitIndex + 1]?.toLowerCase() === "s") {
-      values.push(Number(rawHop.slice(index, endIndex)));
+    const endIndex = decimalEndIndex(rawHop, cursor);
+    const unitIndex = whitespaceEndIndex(rawHop, endIndex);
+
+    if (hasMillisecondsUnitAt(rawHop, unitIndex)) {
+      values.push(Number(rawHop.slice(cursor, endIndex)));
     }
 
-    index = endIndex;
+    cursor = endIndex;
   }
 
   return values;
@@ -496,29 +513,42 @@ function parseHopLine(line: string) {
   return rest ? { hopNumber, rest } : undefined;
 }
 
+function possibleIpv4EndIndex(value: string, startIndex: number) {
+  let endIndex = startIndex;
+
+  while (endIndex < value.length && (isAsciiDigit(value[endIndex]) || value[endIndex] === ".")) {
+    endIndex += 1;
+  }
+
+  return endIndex;
+}
+
+function isValidIpv4Candidate(candidate: string) {
+  const octets = candidate.split(".");
+
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => isDigitsOnly(octet, 3) && Number(octet) >= 0 && Number(octet) <= 255)
+  );
+}
+
 function findIpv4(value: string) {
-  for (let index = 0; index < value.length; index += 1) {
-    if (!isAsciiDigit(value[index])) {
+  let cursor = 0;
+
+  while (cursor < value.length) {
+    if (!isAsciiDigit(value[cursor])) {
+      cursor += 1;
       continue;
     }
 
-    let endIndex = index;
+    const endIndex = possibleIpv4EndIndex(value, cursor);
+    const candidate = value.slice(cursor, endIndex);
 
-    while (endIndex < value.length && (isAsciiDigit(value[endIndex]) || value[endIndex] === ".")) {
-      endIndex += 1;
-    }
-
-    const candidate = value.slice(index, endIndex);
-    const octets = candidate.split(".");
-
-    if (
-      octets.length === 4 &&
-      octets.every((octet) => isDigitsOnly(octet, 3) && Number(octet) >= 0 && Number(octet) <= 255)
-    ) {
+    if (isValidIpv4Candidate(candidate)) {
       return candidate;
     }
 
-    index = endIndex;
+    cursor = endIndex;
   }
 
   return undefined;

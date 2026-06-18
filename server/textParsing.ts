@@ -1,10 +1,10 @@
 export function isAsciiDigit(value: string) {
-  const code = value.charCodeAt(0);
+  const code = value.codePointAt(0) ?? -1;
   return code >= 48 && code <= 57;
 }
 
 export function isAsciiAlpha(value: string) {
-  const code = value.charCodeAt(0);
+  const code = value.codePointAt(0) ?? -1;
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
@@ -13,12 +13,12 @@ export function isAsciiAlphaNumeric(value: string) {
 }
 
 export function isWhitespace(value: string) {
-  const code = value.charCodeAt(0);
+  const code = value.codePointAt(0) ?? -1;
   return code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32;
 }
 
 export function isWhitespaceOrControl(value: string) {
-  const code = value.charCodeAt(0);
+  const code = value.codePointAt(0) ?? -1;
   return code <= 32 || code === 127;
 }
 
@@ -86,32 +86,47 @@ export function isDecimalToken(value: string) {
   return digits > 0;
 }
 
+function isAsPrefixAt(value: string, index: number) {
+  const previous = index > 0 ? value[index - 1] : undefined;
+
+  return (
+    (previous === undefined || !isAsciiAlphaNumeric(previous)) &&
+    value[index].toUpperCase() === "A" &&
+    value[index + 1].toUpperCase() === "S"
+  );
+}
+
+function firstAsnDigitIndex(value: string, prefixIndex: number) {
+  let digitIndex = prefixIndex + 2;
+
+  while (digitIndex < value.length && isWhitespace(value[digitIndex])) {
+    digitIndex += 1;
+  }
+
+  return digitIndex;
+}
+
+function firstNonDigitIndex(value: string, digitIndex: number) {
+  let endIndex = digitIndex;
+
+  while (endIndex < value.length && isAsciiDigit(value[endIndex])) {
+    endIndex += 1;
+  }
+
+  return endIndex;
+}
+
 export function asnDigitsFromText(value: string) {
   for (let index = 0; index < value.length - 1; index += 1) {
-    const previous = index > 0 ? value[index - 1] : undefined;
-
-    if (previous !== undefined && isAsciiAlphaNumeric(previous)) {
+    if (!isAsPrefixAt(value, index)) {
       continue;
     }
 
-    if (value[index].toUpperCase() !== "A" || value[index + 1].toUpperCase() !== "S") {
-      continue;
-    }
+    const startDigitIndex = firstAsnDigitIndex(value, index);
+    const endDigitIndex = firstNonDigitIndex(value, startDigitIndex);
 
-    let digitIndex = index + 2;
-
-    while (digitIndex < value.length && isWhitespace(value[digitIndex])) {
-      digitIndex += 1;
-    }
-
-    const startDigitIndex = digitIndex;
-
-    while (digitIndex < value.length && isAsciiDigit(value[digitIndex])) {
-      digitIndex += 1;
-    }
-
-    if (digitIndex > startDigitIndex) {
-      return value.slice(startDigitIndex, digitIndex);
+    if (endDigitIndex > startDigitIndex) {
+      return value.slice(startDigitIndex, endDigitIndex);
     }
   }
 

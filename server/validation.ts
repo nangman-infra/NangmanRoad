@@ -3,7 +3,6 @@ import type { TraceMode } from "../shared/types";
 import {
   isAsciiAlpha,
   isAsciiAlphaNumeric,
-  isAsciiDigit,
   isWhitespaceOrControl
 } from "./textParsing";
 
@@ -68,7 +67,7 @@ function isValidDomainLabel(label: string) {
     return false;
   }
 
-  if (!isAsciiAlphaNumeric(label[0]) || !isAsciiAlphaNumeric(label[label.length - 1])) {
+  if (!isAsciiAlphaNumeric(label[0]) || !isAsciiAlphaNumeric(label.at(-1) ?? "")) {
     return false;
   }
 
