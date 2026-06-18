@@ -64,33 +64,112 @@ function mtrCells(hop: HopResult) {
   ];
 }
 
-export function TerminalOutput({ error, hops, mode, result, status, target }: TerminalOutputProps) {
-  const command = mode === "mtr" ? `mtr -rwc ${MTR_REPORT_CYCLES} -z ${target}` : `traceout ${target}`;
-  const hasResult = status === "finished" && hops.length > 0;
-  const provider =
-    result?.source.provider === "globalping"
-      ? "Globalping API"
-      : result?.source.provider === "demo"
-        ? "Demo provider"
-        : "Measurement provider";
-  const providerLine =
-    mode === "mtr" && result?.source.provider === "globalping"
-      ? `${provider} - API packet cap 16`
-      : provider;
-  const providerNotices =
-    mode === "mtr" && result?.source.provider === "globalping"
-      ? ["notice  Install-free MTR uses Globalping's 16-sample cap; higher-cycle local MTR requires a local agent"]
-      : [];
-  const commandLines = [
-    `$ ${command}`,
+function providerName(result?: MeasurementResult) {
+  if (result?.source.provider === "globalping") {
+    return "Globalping API";
+  }
+
+  if (result?.source.provider === "demo") {
+    return "Demo provider";
+  }
+
+  return "Measurement provider";
+}
+
+function commandForMode(mode: TraceMode, target: string) {
+  return mode === "mtr" ? `mtr -rwc ${MTR_REPORT_CYCLES} -z ${target}` : `traceout ${target}`;
+}
+
+function commandLines(params: { mode: TraceMode; result?: MeasurementResult; target: string }) {
+  const provider = providerName(params.result);
+  const globalpingMtr = params.mode === "mtr" && params.result?.source.provider === "globalping";
+  const providerLine = globalpingMtr ? `${provider} - API packet cap 16` : provider;
+  const notices = globalpingMtr
+    ? ["notice  Install-free MTR uses Globalping's 16-sample cap; higher-cycle local MTR requires a local agent"]
+    : [];
+
+  return [
+    `$ ${commandForMode(params.mode, params.target)}`,
     `provider  ${providerLine}`,
     "notice  Not a direct trace from your device",
     "notice  Exact device-level traceroute requires a local agent",
-    ...providerNotices
+    ...notices
   ];
-  const traceoutLines = hasResult
-    ? hops.map((hop) => traceoutLine(hop))
-    : [error ? `error  ${error}` : "no completed route output"];
+}
+
+function emptyOutputLine(error?: string) {
+  return error ? `error  ${error}` : "no completed route output";
+}
+
+function traceoutLines(hops: HopResult[], hasResult: boolean, error?: string) {
+  return hasResult ? hops.map((hop) => traceoutLine(hop)) : [emptyOutputLine(error)];
+}
+
+function TerminalCommandBlock({ lines }: { lines: string[] }) {
+  return (
+    <div className="terminal-command-block">
+      {lines.map((line) => (
+        <div key={line}>{line}</div>
+      ))}
+    </div>
+  );
+}
+
+function MtrTable({ hops }: { hops: HopResult[] }) {
+  return (
+    <div className="terminal-mtr-table" role="table" aria-label="MTR result">
+      <div className="terminal-mtr-row terminal-mtr-row--header" role="row">
+        {["#", "AS", "HOST", "LOSS", "SNT", "LAST", "AVG", "BEST", "WRST", "STDEV"].map((label) => (
+          <span key={label} className="terminal-mtr-cell" role="columnheader">
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {hops.map((hop) => (
+        <div key={hop.hopNumber} className="terminal-mtr-row" role="row">
+          {mtrCells(hop).map((cell, index) => (
+            <span
+              key={`${hop.hopNumber}-${index}`}
+              className={[
+                "terminal-mtr-cell",
+                index === 2 ? "terminal-mtr-cell--host" : "",
+                index >= 3 ? "terminal-mtr-cell--metric" : ""
+              ].join(" ")}
+              role="cell"
+              title={index === 2 ? cell : undefined}
+            >
+              {cell}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MtrOutput(params: { commandLines: string[]; error?: string; hasResult: boolean; hops: HopResult[] }) {
+  return (
+    <div className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
+      <TerminalCommandBlock lines={params.commandLines} />
+      {params.hasResult ? <MtrTable hops={params.hops} /> : <div className="terminal-empty-line">{emptyOutputLine(params.error)}</div>}
+    </div>
+  );
+}
+
+function TraceoutOutput(params: { commandLines: string[]; error?: string; hasResult: boolean; hops: HopResult[] }) {
+  return (
+    <pre className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
+      <code>
+        {[...params.commandLines, "", "#     RTT  STATE    HOST", ...traceoutLines(params.hops, params.hasResult, params.error)].join("\n")}
+      </code>
+    </pre>
+  );
+}
+
+export function TerminalOutput({ error, hops, mode, result, status, target }: TerminalOutputProps) {
+  const hasResult = status === "finished" && hops.length > 0;
+  const lines = commandLines({ mode, result, target });
 
   return (
     <aside className="terminal-panel flex min-h-0 flex-col overflow-hidden rounded-lg border">
@@ -109,56 +188,9 @@ export function TerminalOutput({ error, hops, mode, result, status, target }: Te
       </div>
 
       {mode === "mtr" ? (
-        <div className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
-          <div className="terminal-command-block">
-            {commandLines.map((line) => (
-              <div key={line}>{line}</div>
-            ))}
-          </div>
-
-          {hasResult ? (
-            <div className="terminal-mtr-table" role="table" aria-label="MTR result">
-              <div className="terminal-mtr-row terminal-mtr-row--header" role="row">
-                {["#", "AS", "HOST", "LOSS", "SNT", "LAST", "AVG", "BEST", "WRST", "STDEV"].map((label) => (
-                  <span key={label} className="terminal-mtr-cell" role="columnheader">
-                    {label}
-                  </span>
-                ))}
-              </div>
-
-              {hops.map((hop) => {
-                const cells = mtrCells(hop);
-
-                return (
-                  <div key={hop.hopNumber} className="terminal-mtr-row" role="row">
-                    {cells.map((cell, index) => (
-                      <span
-                        key={`${hop.hopNumber}-${index}`}
-                        className={[
-                          "terminal-mtr-cell",
-                          index === 2 ? "terminal-mtr-cell--host" : "",
-                          index >= 3 ? "terminal-mtr-cell--metric" : ""
-                        ].join(" ")}
-                        role="cell"
-                        title={index === 2 ? cell : undefined}
-                      >
-                        {cell}
-                      </span>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="terminal-empty-line">{error ? `error  ${error}` : "no completed route output"}</div>
-          )}
-        </div>
+        <MtrOutput commandLines={lines} error={error} hasResult={hasResult} hops={hops} />
       ) : (
-        <pre className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
-          <code>
-            {[...commandLines, "", "#     RTT  STATE    HOST", ...traceoutLines].join("\n")}
-          </code>
-        </pre>
+        <TraceoutOutput commandLines={lines} error={error} hasResult={hasResult} hops={hops} />
       )}
     </aside>
   );

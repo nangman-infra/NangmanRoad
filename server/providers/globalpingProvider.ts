@@ -12,8 +12,19 @@ const PROVIDER_TIMEOUT_MS = 42_000;
 const POLL_INTERVAL_MS = 1_250;
 const GLOBALPING_MAX_MTR_PACKETS = 16;
 const GLOBALPING_MTR_PROTOCOLS = ["ICMP", "TCP"] as const;
+const ASN_PATTERN = /\bAS\s*(\d+)\b/i;
+const HOP_LINE_PATTERN = /^(\d+)[.)]?\s+(.+)$/;
+const IPV4_PATTERN = /(\d{1,3}(?:\.\d{1,3}){3})/;
+const RTT_PATTERN = /(\d+(?:\.\d+)?)\s*ms/g;
 
 type GlobalpingProtocol = (typeof GLOBALPING_MTR_PROTOCOLS)[number];
+
+interface GlobalpingMeasurementParams {
+  id: string;
+  target: string;
+  mode: TraceMode;
+  visitor?: VisitorContext;
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -68,7 +79,8 @@ function finiteNumber(value: unknown): number | undefined {
   }
 
   if (typeof value === "string") {
-    const parsed = Number(value.replace("%", ""));
+    const normalized = value.endsWith("%") ? value.slice(0, -1) : value;
+    const parsed = Number(normalized);
 
     if (Number.isFinite(parsed)) {
       return parsed;
@@ -130,7 +142,7 @@ function normalizeAsn(value: unknown): string | undefined {
       return "AS???";
     }
 
-    const asMatch = trimmed.match(/\bAS\s*(\d+)\b/i);
+    const asMatch = ASN_PATTERN.exec(trimmed);
 
     if (asMatch) {
       return `AS${asMatch[1]}`;
@@ -352,80 +364,103 @@ function normalizeStatus(rttMs?: number, loss?: number): HopResult["status"] {
   return "ok";
 }
 
-function parseRawTraceroute(raw: string): HopResult[] {
+function rttValues(rawHop: string) {
+  const values: number[] = [];
+  let match: RegExpExecArray | null;
+
+  RTT_PATTERN.lastIndex = 0;
+
+  while ((match = RTT_PATTERN.exec(rawHop)) !== null) {
+    values.push(Number(match[1]));
+  }
+
+  return values;
+}
+
+function averageRtt(values: number[]) {
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function parseMtrMetrics(tokens: string[]) {
+  const lossIndex = tokens.findIndex((token) => /^\d+(?:\.\d+)?%$/.test(token));
+
+  if (lossIndex < 0) {
+    return {};
+  }
+
+  const dropped = finiteNumber(tokens[lossIndex + 1]);
+  const received = finiteNumber(tokens[lossIndex + 2]);
+  const sent = dropped !== undefined && received !== undefined
+    ? dropped + received
+    : finiteNumber(tokens[lossIndex + 1]);
+
+  return {
+    avgRtt: finiteNumber(tokens[lossIndex + 3]),
+    jitterMs: finiteNumber(tokens[lossIndex + 5]) ?? finiteNumber(tokens[lossIndex + 4]),
+    loss: finiteNumber(tokens[lossIndex]),
+    sent
+  };
+}
+
+function rawHopHostname(tokens: string[], waitingForReply: boolean) {
+  const firstHostToken = tokens[0];
+
+  if (waitingForReply || !firstHostToken || firstHostToken === "*" || firstHostToken === "???") {
+    return undefined;
+  }
+
+  return firstHostToken;
+}
+
+function parseRawHop(line: string): HopResult | undefined {
+  const hopMatch = HOP_LINE_PATTERN.exec(line);
+
+  if (!hopMatch) {
+    return undefined;
+  }
+
+  const hopNumber = Number(hopMatch[1]);
+  const rest = hopMatch[2];
+  const tokens = rest.split(/\s+/).filter(Boolean);
+  const asnFromToken = normalizeAsn(tokens[0]);
+
+  if (asnFromToken) {
+    tokens.shift();
+  }
+
+  const waitingForReply = rest.includes("(waiting for reply)") || /\*\s+\*/.test(rest);
+  const ip = IPV4_PATTERN.exec(rest)?.[1];
+  const metrics = parseMtrMetrics(tokens);
+  const rttMs = metrics.avgRtt !== undefined ? Math.round(metrics.avgRtt) : averageRtt(rttValues(rest));
+  const hostname = rawHopHostname(tokens, waitingForReply);
+  const loss = metrics.loss ?? (waitingForReply || rest.includes("*") ? 100 : 0);
+
+  return {
+    hopNumber,
+    asn: asnFromToken ?? inferAsn(ip, hostname),
+    hostname,
+    ip,
+    rttMs,
+    sent: metrics.sent ? Math.trunc(metrics.sent) : undefined,
+    lastMs: rttMs,
+    bestMs: undefined,
+    worstMs: undefined,
+    jitterMs: metrics.jitterMs !== undefined ? Math.round(metrics.jitterMs) : undefined,
+    packetLossPercent: loss,
+    status: normalizeStatus(rttMs, loss)
+  };
+}
+
+export function parseRawTraceroute(raw: string): HopResult[] {
   return raw
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line): HopResult | undefined => {
-      const hopMatch = line.match(/^(\d+)[.)]?\s+(.+)$/);
-
-      if (!hopMatch) {
-        return undefined;
-      }
-
-      const hopNumber = Number(hopMatch[1]);
-      const rest = hopMatch[2];
-      const tokens = rest.split(/\s+/).filter(Boolean);
-      let asn = normalizeAsn(tokens[0]);
-
-      if (asn) {
-        tokens.shift();
-      }
-
-      const waitingForReply = rest.includes("(waiting for reply)") || /\*\s+\*/.test(rest);
-      const ipMatch = rest.match(/(\d{1,3}(?:\.\d{1,3}){3})/);
-      const rttMatches = [...rest.matchAll(/(\d+(?:\.\d+)?)\s*ms/g)].map((match) => Number(match[1]));
-      const lossIndex = tokens.findIndex((token) => /^\d+(?:\.\d+)?%$/.test(token));
-      const mtrLoss = lossIndex >= 0 ? finiteNumber(tokens[lossIndex]) : undefined;
-      const dropped = lossIndex >= 0 ? finiteNumber(tokens[lossIndex + 1]) : undefined;
-      const received = lossIndex >= 0 ? finiteNumber(tokens[lossIndex + 2]) : undefined;
-      const avgFromMtr = lossIndex >= 0 ? finiteNumber(tokens[lossIndex + 3]) : undefined;
-      const stDevFromMtr = lossIndex >= 0 ? finiteNumber(tokens[lossIndex + 4]) : undefined;
-      const jAvgFromMtr = lossIndex >= 0 ? finiteNumber(tokens[lossIndex + 5]) : undefined;
-      const sent =
-        dropped !== undefined && received !== undefined
-          ? dropped + received
-          : lossIndex >= 0
-            ? finiteNumber(tokens[lossIndex + 1])
-            : undefined;
-      const avgRtt =
-        avgFromMtr !== undefined
-          ? Math.round(avgFromMtr)
-          : rttMatches.length > 0
-            ? Math.round(rttMatches.reduce((sum, value) => sum + value, 0) / rttMatches.length)
-            : undefined;
-      const firstHostToken = tokens[0];
-      const hostname =
-        !waitingForReply && firstHostToken && firstHostToken !== "*" && firstHostToken !== "???"
-          ? firstHostToken
-          : undefined;
-      const loss = mtrLoss ?? (waitingForReply || rest.includes("*") ? 100 : 0);
-      const ip = ipMatch?.[1];
-      asn = asn ?? inferAsn(ip, hostname);
-
-      const hop: HopResult = {
-        hopNumber,
-        asn,
-        hostname,
-        ip,
-        rttMs: avgRtt,
-        sent: sent ? Math.trunc(sent) : undefined,
-        lastMs: avgRtt,
-        bestMs: undefined,
-        worstMs: undefined,
-        jitterMs:
-          jAvgFromMtr !== undefined
-            ? Math.round(jAvgFromMtr)
-            : stDevFromMtr !== undefined
-              ? Math.round(stDevFromMtr)
-              : undefined,
-        packetLossPercent: loss,
-        status: normalizeStatus(avgRtt, loss)
-      };
-
-      return hop;
-    })
+    .map(parseRawHop)
     .filter((hop): hop is HopResult => Boolean(hop));
 }
 
@@ -536,51 +571,131 @@ function extractSource(payload: unknown) {
   };
 }
 
-export async function* runGlobalpingMeasurement(params: {
-  id: string;
-  target: string;
+function globalpingType(mode: TraceMode) {
+  return mode === "traceout" ? "traceroute" : "mtr";
+}
+
+function protocolsForMode(mode: TraceMode): readonly GlobalpingProtocol[] {
+  return mode === "mtr" ? GLOBALPING_MTR_PROTOCOLS : ["ICMP"];
+}
+
+function measurementOptions(mode: TraceMode, protocol: GlobalpingProtocol) {
+  if (mode !== "mtr") {
+    return { protocol: "ICMP" };
+  }
+
+  return {
+    protocol,
+    packets: GLOBALPING_MAX_MTR_PACKETS
+  };
+}
+
+async function createProviderMeasurement(params: {
+  apiUrl: string;
+  controller: AbortController;
+  measurement: GlobalpingMeasurementParams;
+  protocol: GlobalpingProtocol;
+}) {
+  const createResponse = await fetch(params.apiUrl, {
+    method: "POST",
+    headers: headers(),
+    signal: params.controller.signal,
+    body: JSON.stringify({
+      type: globalpingType(params.measurement.mode),
+      target: params.measurement.target,
+      locations: [{ magic: locationMagic(params.measurement.visitor) }],
+      limit: 1,
+      measurementOptions: measurementOptions(params.measurement.mode, params.protocol)
+    })
+  });
+
+  if (!createResponse.ok) {
+    throw new Error(`Globalping returned ${createResponse.status}`);
+  }
+
+  const created = (await createResponse.json()) as { id?: string };
+
+  if (!created.id) {
+    throw new Error("Globalping did not return a measurement id.");
+  }
+
+  return created.id;
+}
+
+async function pollProviderMeasurement(apiUrl: string, providerId: string, controller: AbortController) {
+  const pollResponse = await fetch(`${apiUrl}/${providerId}`, {
+    headers: headers(),
+    signal: controller.signal
+  });
+
+  if (!pollResponse.ok) {
+    throw new Error(`Globalping poll returned ${pollResponse.status}`);
+  }
+
+  return (await pollResponse.json()) as Record<string, unknown>;
+}
+
+function firstProviderResult(payload: Record<string, unknown>) {
+  const results = Array.isArray(payload.results) ? payload.results : [];
+
+  return results[0];
+}
+
+function nextRetryProtocolIndex(params: {
+  failureMessage: string;
   mode: TraceMode;
-  visitor?: VisitorContext;
-}): AsyncGenerator<MeasurementEvent> {
+  protocolIndex: number;
+  protocols: readonly GlobalpingProtocol[];
+}) {
+  const canRetry =
+    params.mode === "mtr" &&
+    params.protocols[params.protocolIndex] === "ICMP" &&
+    shouldRetryMtrWithTcp(params.failureMessage) &&
+    params.protocolIndex + 1 < params.protocols.length;
+
+  return canRetry ? params.protocolIndex + 1 : undefined;
+}
+
+function providerFinished(payload: Record<string, unknown>, hops: HopResult[]) {
+  return payload.status === "finished" || payload.status === "completed" || hops.length > 0;
+}
+
+function applyProviderResult(currentResult: MeasurementResult, firstResult: unknown, hops: HopResult[]) {
+  const source = extractSource(firstResult);
+
+  return {
+    ...currentResult,
+    source,
+    hops,
+    confidence: measurementConfidence(hops)
+  };
+}
+
+function* newHopEvents(hops: HopResult[], emittedHopCount: number): Generator<MeasurementEvent> {
+  for (const hop of hops.slice(emittedHopCount)) {
+    yield { type: "hop_result", payload: hop };
+  }
+}
+
+function* metricUpdateEvents(hops: HopResult[]): Generator<MeasurementEvent> {
+  for (const hop of hops) {
+    yield {
+      type: "metric_update",
+      payload: {
+        hopNumber: hop.hopNumber,
+        rttMs: hop.rttMs,
+        jitterMs: hop.jitterMs,
+        packetLossPercent: hop.packetLossPercent,
+        status: hop.status
+      }
+    };
+  }
+}
+
+export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementParams): AsyncGenerator<MeasurementEvent> {
   const apiUrl = process.env.GLOBALPING_API_URL ?? DEFAULT_API_URL;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
-  const measurementType = params.mode === "traceout" ? "traceroute" : "mtr";
-  const buildMeasurementOptions = (protocol: GlobalpingProtocol) =>
-    params.mode === "mtr"
-      ? {
-          protocol,
-          packets: GLOBALPING_MAX_MTR_PACKETS
-        }
-      : {
-          protocol: "ICMP"
-        };
-  const createProviderMeasurement = async (protocol: GlobalpingProtocol) => {
-    const createResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: headers(),
-      signal: controller.signal,
-      body: JSON.stringify({
-        type: measurementType,
-        target: params.target,
-        locations: [{ magic: locationMagic(params.visitor) }],
-        limit: 1,
-        measurementOptions: buildMeasurementOptions(protocol)
-      })
-    });
-
-    if (!createResponse.ok) {
-      throw new Error(`Globalping returned ${createResponse.status}`);
-    }
-
-    const created = (await createResponse.json()) as { id?: string };
-
-    if (!created.id) {
-      throw new Error("Globalping did not return a measurement id.");
-    }
-
-    return created.id;
-  };
 
   try {
     const startedAt = new Date().toISOString();
@@ -602,25 +717,20 @@ export async function* runGlobalpingMeasurement(params: {
 
     const deadline = Date.now() + PROVIDER_TIMEOUT_MS;
     let emittedHopCount = 0;
-    const protocols = params.mode === "mtr" ? GLOBALPING_MTR_PROTOCOLS : (["ICMP"] as const);
+    const protocols = protocolsForMode(params.mode);
     let protocolIndex = 0;
-    let providerId = await createProviderMeasurement(protocols[protocolIndex]);
+    let providerId = await createProviderMeasurement({
+      apiUrl,
+      controller,
+      measurement: params,
+      protocol: protocols[protocolIndex]
+    });
 
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS);
 
-      const pollResponse = await fetch(`${apiUrl}/${providerId}`, {
-        headers: headers(),
-        signal: controller.signal
-      });
-
-      if (!pollResponse.ok) {
-        throw new Error(`Globalping poll returned ${pollResponse.status}`);
-      }
-
-      const pollPayload = (await pollResponse.json()) as Record<string, unknown>;
-      const results = Array.isArray(pollPayload.results) ? pollPayload.results : [];
-      const firstResult = results[0];
+      const pollPayload = await pollProviderMeasurement(apiUrl, providerId, controller);
+      const firstResult = firstProviderResult(pollPayload);
 
       if (!firstResult) {
         continue;
@@ -629,57 +739,44 @@ export async function* runGlobalpingMeasurement(params: {
       const failureMessage = resultFailureMessage(firstResult);
 
       if (failureMessage) {
-        const canRetryWithTcp =
-          params.mode === "mtr" &&
-          protocols[protocolIndex] === "ICMP" &&
-          shouldRetryMtrWithTcp(failureMessage) &&
-          protocolIndex + 1 < protocols.length;
+        const retryProtocolIndex = nextRetryProtocolIndex({
+          failureMessage,
+          mode: params.mode,
+          protocolIndex,
+          protocols
+        });
 
-        if (canRetryWithTcp) {
-          protocolIndex += 1;
+        if (retryProtocolIndex !== undefined) {
+          protocolIndex = retryProtocolIndex;
           emittedHopCount = 0;
-          providerId = await createProviderMeasurement(protocols[protocolIndex]);
+          providerId = await createProviderMeasurement({
+            apiUrl,
+            controller,
+            measurement: params,
+            protocol: protocols[protocolIndex]
+          });
           continue;
         }
 
         throw new Error(`Globalping measurement failed. ${failureMessage}`);
       }
 
-      const source = extractSource(firstResult);
       const hops = await enrichHopsWithGeo({
         hops: parseResultHops(firstResult),
-        source
+        source: extractSource(firstResult)
       });
 
-      currentResult = {
-        ...currentResult,
-        source,
-        hops,
-        confidence: measurementConfidence(hops)
-      };
+      currentResult = applyProviderResult(currentResult, firstResult, hops);
 
-      for (const hop of hops.slice(emittedHopCount)) {
-        yield { type: "hop_result", payload: hop };
-      }
+      yield* newHopEvents(hops, emittedHopCount);
 
       emittedHopCount = Math.max(emittedHopCount, hops.length);
 
       if (params.mode === "mtr") {
-        for (const hop of hops) {
-          yield {
-            type: "metric_update",
-            payload: {
-              hopNumber: hop.hopNumber,
-              rttMs: hop.rttMs,
-              jitterMs: hop.jitterMs,
-              packetLossPercent: hop.packetLossPercent,
-              status: hop.status
-            }
-          };
-        }
+        yield* metricUpdateEvents(hops);
       }
 
-      if (pollPayload.status === "finished" || pollPayload.status === "completed" || hops.length > 0) {
+      if (providerFinished(pollPayload, hops)) {
         currentResult = {
           ...currentResult,
           status: "finished",
