@@ -154,7 +154,7 @@ pipeline {
                             env.FAILURE_REASON = 'SonarQube 분석에 실패해 배포가 중단되었습니다.'
 
                             def scannerHome = tool env.SONAR_SCANNER_TOOL
-                            def sourceDirs = ['src', 'server', 'shared', 'scripts'].findAll { path ->
+                            def sourceDirs = ['src', 'server', 'shared'].findAll { path ->
                                 fileExists(path)
                             }
                             env.SONAR_SOURCES = sourceDirs ? sourceDirs.join(',') : '.'
@@ -174,6 +174,8 @@ pipeline {
                                     sonar.scm.revision=${env.FULL_SHA}
                                     sonar.sources=${env.SONAR_SOURCES}
                                     sonar.exclusions=**/node_modules/**,**/dist/**,**/dist-server/**,**/coverage/**,**/*.config.*,**/*.d.ts
+                                    sonar.test.inclusions=**/*.test.ts,**/*.test.tsx
+                                    sonar.coverage.exclusions=**/*.test.ts,**/*.test.tsx
                                     ${coverageLine}
                                     sonar.javascript.node.maxspace=4096
                                 """.stripIndent().trim() + '\n'

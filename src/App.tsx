@@ -80,6 +80,43 @@ function upsertHop(hops: HopResult[], next: HopResult) {
   return hops.map((hop, index) => (index === existingIndex ? { ...hop, ...next } : hop));
 }
 
+function storedTheme(): ThemeMode {
+  try {
+    return window.localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+function persistTheme(theme: ThemeMode) {
+  try {
+    window.localStorage.setItem(themeStorageKey, theme);
+  } catch {
+    // Keep the UI usable when storage is disabled by the browser.
+  }
+}
+
+function metricHopUpdate(hop: HopResult, event: Extract<MeasurementEvent, { type: "metric_update" }>) {
+  return hop.hopNumber === event.payload.hopNumber ? { ...hop, ...event.payload } : hop;
+}
+
+function isBusyStatus(status: MeasurementStatus) {
+  return status === "starting" || status === "running";
+}
+
+function journeyStateFor(params: {
+  hasSearched: boolean;
+  isBusy: boolean;
+  isJourneyLaunching: boolean;
+  shouldShowResult: boolean;
+}): JourneyState {
+  if (!params.hasSearched) {
+    return "idle";
+  }
+
+  return !params.shouldShowResult || params.isBusy || params.isJourneyLaunching ? "launch" : "settled";
+}
+
 export function App() {
   const [target, setTarget] = useState(initialTarget);
   const [mode, setMode] = useState<TraceMode>("traceout");
@@ -90,15 +127,13 @@ export function App() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isJourneyLaunching, setIsJourneyLaunching] = useState(false);
   const [resultView, setResultView] = useState<"map" | "terminal">("map");
-  const [theme, setTheme] = useState<ThemeMode>(() =>
-    window.localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark"
-  );
+  const [theme, setTheme] = useState<ThemeMode>(storedTheme);
   const closeEventsRef = useRef<(() => void) | undefined>();
   const journeyStartedAtRef = useRef(0);
   const journeyReleaseTimerRef = useRef<number | undefined>();
 
   useEffect(() => {
-    window.localStorage.setItem(themeStorageKey, theme);
+    persistTheme(theme);
   }, [theme]);
 
   useEffect(
@@ -124,40 +159,30 @@ export function App() {
   }, [hops, result]);
 
   function handleEvent(event: MeasurementEvent) {
-    if (event.type === "measurement_started") {
-      setResult(event.payload);
-      setHops(event.payload.hops);
-      setStatus("running");
-      return;
-    }
-
-    if (event.type === "hop_result") {
-      setHops((current) => upsertHop(current, event.payload));
-      return;
-    }
-
-    if (event.type === "metric_update") {
-      setHops((current) =>
-        current.map((hop) =>
-          hop.hopNumber === event.payload.hopNumber ? { ...hop, ...event.payload } : hop
-        )
-      );
-      return;
-    }
-
-    if (event.type === "measurement_finished") {
-      setResult(event.payload);
-      setHops(event.payload.hops);
-      setStatus("finished");
-      releaseJourneyAfterMinimum();
-      closeEventsRef.current?.();
-      return;
-    }
-
-    if (event.type === "error") {
-      setError(event.payload.message);
-      setStatus("error");
-      releaseJourneyAfterMinimum();
+    switch (event.type) {
+      case "measurement_started":
+        setResult(event.payload);
+        setHops(event.payload.hops);
+        setStatus("running");
+        break;
+      case "hop_result":
+        setHops((current) => upsertHop(current, event.payload));
+        break;
+      case "metric_update":
+        setHops((current) => current.map((hop) => metricHopUpdate(hop, event)));
+        break;
+      case "measurement_finished":
+        setResult(event.payload);
+        setHops(event.payload.hops);
+        setStatus("finished");
+        releaseJourneyAfterMinimum();
+        closeEventsRef.current?.();
+        break;
+      case "error":
+        setError(event.payload.message);
+        setStatus("error");
+        releaseJourneyAfterMinimum();
+        break;
     }
   }
 
@@ -241,10 +266,15 @@ export function App() {
     setError(undefined);
   }
 
-  const isBusy = status === "starting" || status === "running";
+  const isBusy = isBusyStatus(status);
   const shouldShowResult = hasSearched && (status === "finished" || status === "error");
   const shouldDisplayResult = shouldShowResult && !isJourneyLaunching;
-  const journeyState: JourneyState = !hasSearched ? "idle" : !shouldDisplayResult || isBusy ? "launch" : "settled";
+  const journeyState = journeyStateFor({
+    hasSearched,
+    isBusy,
+    isJourneyLaunching,
+    shouldShowResult
+  });
 
   return (
     <AppShell journeyState={journeyState} theme={theme}>

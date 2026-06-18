@@ -42,6 +42,55 @@ interface SphereRingPosition {
   localIndex: number;
 }
 
+interface MotionState {
+  speed: number;
+  linkBoost: number;
+  drift: number;
+  sceneOpacity: number;
+}
+
+interface MotionPalette {
+  glow: string;
+  line: string;
+  node: string;
+  nodeSoft: string;
+  violet: string;
+}
+
+interface AmbientConnectionSettings {
+  baseAlpha: number;
+  launchAlpha: number;
+  maxDistance: number;
+  palette: MotionPalette;
+  revealHiddenNodes: number;
+  theme: ThemeMode;
+}
+
+interface SphereMeshContext {
+  alphaBase: number;
+  centerX: number;
+  centerY: number;
+  ctx: CanvasRenderingContext2D;
+  currentTheme: ThemeMode;
+  drawnEdges: Set<string>;
+  layouts: SpherePoint[];
+  meshReveal: number;
+  nodes: NetworkNode[];
+  palette: MotionPalette;
+  structureRadius: number;
+}
+
+interface NodeDrawContext {
+  ctx: CanvasRenderingContext2D;
+  formedNodeStyle: number;
+  launchGlow: number;
+  motion: MotionState;
+  palette: MotionPalette;
+  theme: ThemeMode;
+  time: number;
+  transitionRipple: number;
+}
+
 const desktopSphereRingCounts = [12, 12, 12, 12, 12, 12, 12, 12, 12, 12];
 const wideSphereRingCounts = [13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13];
 const ultraWideSphereRingCounts = [14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14];
@@ -116,7 +165,7 @@ function getIdlePresence(index: number) {
   return index % 2 === 0 || hash(index, 12) > 0.72;
 }
 
-function getMotionPalette(theme: ThemeMode) {
+function getMotionPalette(theme: ThemeMode): MotionPalette {
   return theme === "light"
     ? {
         node: "rgba(14, 165, 233, ",
@@ -132,6 +181,279 @@ function getMotionPalette(theme: ThemeMode) {
         violet: "rgba(139, 126, 246, ",
         glow: "rgba(94, 231, 255, "
       };
+}
+
+function ambientConnectionSettings(params: {
+  height: number;
+  motion: MotionState;
+  theme: ThemeMode;
+  width: number;
+}): AmbientConnectionSettings {
+  const viewportScale = clamp(Math.sqrt((params.width * params.height) / (1440 * 820)), 1, 1.8);
+  const formationReach = params.motion.drift * (params.width < 768 ? 34 : 58) * viewportScale;
+
+  return {
+    baseAlpha: (params.theme === "light" ? 0.24 : 0.17) * params.motion.sceneOpacity,
+    launchAlpha: params.motion.linkBoost * 0.1 * params.motion.sceneOpacity,
+    maxDistance: (params.width < 768 ? 118 : 148) * viewportScale + formationReach,
+    palette: getMotionPalette(params.theme),
+    revealHiddenNodes: smoothStep(params.motion.drift / 0.34),
+    theme: params.theme
+  };
+}
+
+function idlePresence(index: number, revealHiddenNodes: number) {
+  return getIdlePresence(index) ? 1 : revealHiddenNodes;
+}
+
+function drawAmbientEdge(params: {
+  ctx: CanvasRenderingContext2D;
+  from: NetworkNode;
+  fromLayout: SpherePoint;
+  fromPresence: number;
+  opacity: number;
+  settings: AmbientConnectionSettings;
+  to: NetworkNode;
+  toLayout: SpherePoint;
+  toPresence: number;
+}) {
+  const distance = Math.hypot(params.fromLayout.x - params.toLayout.x, params.fromLayout.y - params.toLayout.y);
+
+  if (distance > params.settings.maxDistance) {
+    return;
+  }
+
+  const strength = 1 - distance / params.settings.maxDistance;
+  const accent = params.from.accent > 0.88 || params.to.accent > 0.88;
+  const color = accent ? params.settings.palette.violet : params.settings.palette.line;
+
+  params.ctx.beginPath();
+  params.ctx.moveTo(params.fromLayout.x, params.fromLayout.y);
+  params.ctx.lineTo(params.toLayout.x, params.toLayout.y);
+  params.ctx.strokeStyle = `${color}${(params.settings.baseAlpha + params.settings.launchAlpha) * strength * params.opacity * params.fromPresence * params.toPresence})`;
+  params.ctx.lineWidth = params.settings.theme === "light" ? 0.58 + strength * 0.4 : 0.52 + strength * 0.34;
+  params.ctx.stroke();
+}
+
+function sphereEdgeKey(fromIndex: number, toIndex: number) {
+  return fromIndex < toIndex ? `${fromIndex}:${toIndex}` : `${toIndex}:${fromIndex}`;
+}
+
+function sphereRings(ringCounts: number[], layoutCount: number) {
+  const rings: number[][] = [];
+  let ringStart = 0;
+
+  for (const ringCount of ringCounts) {
+    const ring = Array.from({ length: ringCount }, (_value, offset) => ringStart + offset).filter(
+      (index) => index < layoutCount
+    );
+
+    rings.push(ring);
+    ringStart += ringCount;
+  }
+
+  return rings;
+}
+
+function drawSphereEdge(context: SphereMeshContext, fromIndex: number, toIndex: number, strength: number) {
+  const from = context.nodes[fromIndex];
+  const to = context.nodes[toIndex];
+  const edgeKey = sphereEdgeKey(fromIndex, toIndex);
+
+  if (!from || !to || context.drawnEdges.has(edgeKey)) {
+    return;
+  }
+
+  context.drawnEdges.add(edgeKey);
+
+  const fromLayout = context.layouts[fromIndex];
+  const toLayout = context.layouts[toIndex];
+  const depth = (fromLayout.depth + toLayout.depth) * 0.5;
+  const depthPresence = Math.pow(clamp((depth + 1) / 2, 0, 1), 1.25);
+  const frontBias = 0.16 + depthPresence * 0.84;
+  const accent = from.accent > 0.9 || to.accent > 0.9;
+  const color = accent ? context.palette.violet : context.palette.line;
+  const midX = (fromLayout.x + toLayout.x) * 0.5;
+  const midY = (fromLayout.y + toLayout.y) * 0.5;
+  const radialX = midX - context.centerX;
+  const radialY = midY - context.centerY;
+  const radialLength = Math.hypot(radialX, radialY) || 1;
+  const surfaceBias = clamp(radialLength / context.structureRadius, 0, 1);
+  const edgeLength = Math.hypot(fromLayout.x - toLayout.x, fromLayout.y - toLayout.y);
+  const bend = Math.min(16, edgeLength * 0.08) * surfaceBias * context.meshReveal;
+  const controlX = midX + (radialX / radialLength) * bend;
+  const controlY = midY + (radialY / radialLength) * bend;
+
+  context.ctx.beginPath();
+  context.ctx.moveTo(fromLayout.x, fromLayout.y);
+  context.ctx.quadraticCurveTo(controlX, controlY, toLayout.x, toLayout.y);
+  context.ctx.strokeStyle = `${color}${context.alphaBase * strength * frontBias})`;
+  context.ctx.lineWidth = context.currentTheme === "light" ? 0.46 + strength * 0.3 : 0.46 + strength * 0.28;
+  context.ctx.stroke();
+}
+
+function drawRingEdges(context: SphereMeshContext, ring: number[], ringIndex: number, ringCount: number) {
+  if (ring.length < 2) {
+    return;
+  }
+
+  const isPolarRing = ringIndex === 0 || ringIndex === ringCount - 1;
+
+  for (let index = 0; index < ring.length; index += 1) {
+    const toIndex = ring[index + 1] ?? (ring.length > 3 ? ring[0] : undefined);
+
+    if (toIndex !== undefined) {
+      drawSphereEdge(context, ring[index], toIndex, isPolarRing ? 0.4 : 0.54);
+    }
+  }
+}
+
+function drawInterRingEdges(context: SphereMeshContext, upperRing: number[], lowerRing: number[], ringIndex: number) {
+  if (upperRing.length < 2 || lowerRing.length < 2) {
+    return;
+  }
+
+  const cellCount = Math.min(upperRing.length, lowerRing.length);
+
+  for (let cellIndex = 0; cellIndex < cellCount; cellIndex += 1) {
+    const upperA = upperRing[cellIndex % upperRing.length];
+    const upperB = upperRing[(cellIndex + 1) % upperRing.length];
+    const lowerA = lowerRing[cellIndex % lowerRing.length];
+    const lowerB = lowerRing[(cellIndex + 1) % lowerRing.length];
+    const uniqueCellNodes = new Set([upperA, upperB, lowerA, lowerB]);
+
+    if (uniqueCellNodes.size < 4) {
+      continue;
+    }
+
+    drawSphereEdge(context, upperA, lowerA, 0.64);
+    drawSphereEdge(context, upperB, lowerB, 0.64);
+    drawSphereEdge(
+      context,
+      (cellIndex + ringIndex) % 2 === 0 ? upperA : upperB,
+      (cellIndex + ringIndex) % 2 === 0 ? lowerB : lowerA,
+      0.46
+    );
+  }
+}
+
+function nodeColor(node: NetworkNode, palette: MotionPalette) {
+  if (node.accent > 0.92) {
+    return palette.violet;
+  }
+
+  return node.accent > 0.72 ? palette.node : palette.line;
+}
+
+function formedNodeAlpha(params: { accent: boolean; formedBoost: number; pulse: number; theme: ThemeMode }) {
+  if (params.accent) {
+    return params.theme === "light" ? 0.64 + params.pulse * 0.24 : 0.72 + params.pulse * 0.28;
+  }
+
+  return params.theme === "light"
+    ? 0.44 + params.pulse * 0.24 + params.formedBoost * 0.14
+    : 0.5 + params.pulse * 0.25 + params.formedBoost * 0.18;
+}
+
+function drawIdleNode(params: {
+  accent: boolean;
+  color: string;
+  context: NodeDrawContext;
+  idlePresence: number;
+  idleRadius: number;
+  layout: SpherePoint;
+}) {
+  const { ctx, motion, theme } = params.context;
+  const idleGlowRadius = params.idleRadius * (params.accent ? 5.4 : 4.7);
+  const idleGlow = ctx.createRadialGradient(params.layout.x, params.layout.y, 0, params.layout.x, params.layout.y, idleGlowRadius);
+
+  idleGlow.addColorStop(0, `${params.color}${(theme === "light" ? 0.14 : 0.2) * params.idlePresence * motion.sceneOpacity})`);
+  idleGlow.addColorStop(1, `${params.color}0)`);
+  ctx.fillStyle = idleGlow;
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, idleGlowRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, params.idleRadius, 0, Math.PI * 2);
+  ctx.fillStyle = `${params.color}${(theme === "light" ? 0.5 : 0.44) * motion.sceneOpacity * params.idlePresence})`;
+  ctx.fill();
+}
+
+function drawFormedGlow(params: {
+  accent: boolean;
+  color: string;
+  context: NodeDrawContext;
+  layout: SpherePoint;
+  radius: number;
+  visibleAlpha: number;
+}) {
+  if (params.context.launchGlow <= 0.08) {
+    return;
+  }
+
+  const { ctx, launchGlow, theme } = params.context;
+  const glowRadius = params.radius * (params.accent ? 8.2 : 6.8);
+  const glow = ctx.createRadialGradient(params.layout.x, params.layout.y, 0, params.layout.x, params.layout.y, glowRadius);
+
+  glow.addColorStop(0, `${params.color}${(theme === "light" ? launchGlow * 0.42 : launchGlow * 0.54) * params.visibleAlpha})`);
+  glow.addColorStop(0.34, `${params.color}${(theme === "light" ? launchGlow * 0.14 : launchGlow * 0.2) * params.visibleAlpha})`);
+  glow.addColorStop(1, `${params.color}0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, glowRadius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawTransitionRipple(params: {
+  color: string;
+  context: NodeDrawContext;
+  layout: SpherePoint;
+  node: NetworkNode;
+  radius: number;
+  visibleAlpha: number;
+}) {
+  if (params.context.transitionRipple <= 0.02) {
+    return;
+  }
+
+  const { ctx, theme, time, transitionRipple } = params.context;
+  const ripplePhase = (time * 1.05 + params.node.phase) % 1;
+  const rippleRadius = params.radius * (2.25 + ripplePhase * 2.55);
+  const rippleAlpha = (1 - ripplePhase) * transitionRipple * (theme === "light" ? 0.24 : 0.3) * params.visibleAlpha;
+
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, rippleRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = `${params.color}${rippleAlpha})`;
+  ctx.lineWidth = 0.75;
+  ctx.stroke();
+}
+
+function drawFormedNode(params: {
+  alpha: number;
+  color: string;
+  context: NodeDrawContext;
+  layout: SpherePoint;
+  radius: number;
+  visibleAlpha: number;
+}) {
+  const { ctx, formedNodeStyle, theme } = params.context;
+
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, params.radius * 1.9, 0, Math.PI * 2);
+  ctx.strokeStyle = `${params.color}${(theme === "light" ? 0.48 : 0.62) * params.visibleAlpha * formedNodeStyle})`;
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, params.radius, 0, Math.PI * 2);
+  ctx.fillStyle = `${params.color}${params.alpha * 0.78 * params.visibleAlpha * formedNodeStyle})`;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(params.layout.x, params.layout.y, Math.max(0.82, params.radius * 0.42), 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(248, 251, 255, ${(theme === "light" ? 0.64 : 0.78) * params.visibleAlpha * formedNodeStyle})`;
+  ctx.fill();
 }
 
 function buildNodes(width: number, height: number) {
@@ -335,19 +657,17 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
         return;
       }
 
-      const currentTheme = themeRef.current;
-      const palette = getMotionPalette(currentTheme);
-      const revealHiddenNodes = smoothStep(motion.drift / 0.34);
-      const viewportScale = clamp(Math.sqrt((width * height) / (1440 * 820)), 1, 1.8);
-      const formationReach = motion.drift * (width < 768 ? 34 : 58) * viewportScale;
-      const maxDistance = (width < 768 ? 118 : 148) * viewportScale + formationReach;
-      const baseAlpha = (currentTheme === "light" ? 0.24 : 0.17) * motion.sceneOpacity;
-      const launchAlpha = motion.linkBoost * (currentTheme === "light" ? 0.1 : 0.1) * motion.sceneOpacity;
+      const settings = ambientConnectionSettings({
+        height,
+        motion,
+        theme: themeRef.current,
+        width
+      });
 
       for (let index = 0; index < nodes.length; index += 1) {
         const node = nodes[index];
         const nodeLayout = getRenderPoint(node, index, time);
-        const nodePresence = getIdlePresence(index) ? 1 : revealHiddenNodes;
+        const nodePresence = idlePresence(index, settings.revealHiddenNodes);
 
         if (nodePresence <= 0.02) {
           continue;
@@ -356,28 +676,23 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
         for (let nextIndex = index + 1; nextIndex < nodes.length; nextIndex += 1) {
           const next = nodes[nextIndex];
           const nextLayout = getRenderPoint(next, nextIndex, time);
-          const nextPresence = getIdlePresence(nextIndex) ? 1 : revealHiddenNodes;
+          const nextPresence = idlePresence(nextIndex, settings.revealHiddenNodes);
 
           if (nextPresence <= 0.02) {
             continue;
           }
 
-          const distance = Math.hypot(nodeLayout.x - nextLayout.x, nodeLayout.y - nextLayout.y);
-
-          if (distance > maxDistance) {
-            continue;
-          }
-
-          const strength = 1 - distance / maxDistance;
-          const accent = node.accent > 0.88 || next.accent > 0.88;
-          const color = accent ? palette.violet : palette.line;
-
-          ctx.beginPath();
-          ctx.moveTo(nodeLayout.x, nodeLayout.y);
-          ctx.lineTo(nextLayout.x, nextLayout.y);
-          ctx.strokeStyle = `${color}${(baseAlpha + launchAlpha) * strength * opacity * nodePresence * nextPresence})`;
-          ctx.lineWidth = currentTheme === "light" ? 0.58 + strength * 0.4 : 0.52 + strength * 0.34;
-          ctx.stroke();
+          drawAmbientEdge({
+            ctx,
+            from: node,
+            fromLayout: nodeLayout,
+            fromPresence: nodePresence,
+            opacity,
+            settings,
+            to: next,
+            toLayout: nextLayout,
+            toPresence: nextPresence
+          });
         }
       }
     }
@@ -396,106 +711,25 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
       const centerY = height * 0.48;
       const structureRadius = Math.min(width, height) * (width < 768 ? 0.34 : 0.38);
       const layouts = nodes.map((node, index) => getRenderPoint(node, index, time));
-      const drawnEdges = new Set<string>();
+      const rings = sphereRings(getSphereRingCounts(width, height), layouts.length);
+      const meshContext: SphereMeshContext = {
+        alphaBase,
+        centerX,
+        centerY,
+        ctx,
+        currentTheme,
+        drawnEdges: new Set<string>(),
+        layouts,
+        meshReveal,
+        nodes,
+        palette,
+        structureRadius
+      };
 
-      function drawEdge(fromIndex: number, toIndex: number, strength: number) {
-        const from = nodes[fromIndex];
-        const to = nodes[toIndex];
-        const edgeKey = fromIndex < toIndex ? `${fromIndex}:${toIndex}` : `${toIndex}:${fromIndex}`;
-
-        if (!from || !to || drawnEdges.has(edgeKey)) {
-          return;
-        }
-
-        drawnEdges.add(edgeKey);
-
-        const fromLayout = layouts[fromIndex];
-        const toLayout = layouts[toIndex];
-        const depth = (fromLayout.depth + toLayout.depth) * 0.5;
-        const depthPresence = Math.pow(clamp((depth + 1) / 2, 0, 1), 1.25);
-        const frontBias = 0.16 + depthPresence * 0.84;
-        const accent = from.accent > 0.9 || to.accent > 0.9;
-        const color = accent ? palette.violet : palette.line;
-        const midX = (fromLayout.x + toLayout.x) * 0.5;
-        const midY = (fromLayout.y + toLayout.y) * 0.5;
-        const radialX = midX - centerX;
-        const radialY = midY - centerY;
-        const radialLength = Math.hypot(radialX, radialY) || 1;
-        const surfaceBias = clamp(radialLength / structureRadius, 0, 1);
-        const edgeLength = Math.hypot(fromLayout.x - toLayout.x, fromLayout.y - toLayout.y);
-        const bend = Math.min(16, edgeLength * 0.08) * surfaceBias * meshReveal;
-        const controlX = midX + (radialX / radialLength) * bend;
-        const controlY = midY + (radialY / radialLength) * bend;
-
-        ctx.beginPath();
-        ctx.moveTo(fromLayout.x, fromLayout.y);
-        ctx.quadraticCurveTo(controlX, controlY, toLayout.x, toLayout.y);
-        ctx.strokeStyle = `${color}${alphaBase * strength * frontBias})`;
-        ctx.lineWidth = currentTheme === "light" ? 0.46 + strength * 0.3 : 0.46 + strength * 0.28;
-        ctx.stroke();
-      }
-
-      const ringCounts = getSphereRingCounts(width, height);
-      const rings: number[][] = [];
-      let ringStart = 0;
-
-      ringCounts.forEach((ringCount) => {
-        const ring = Array.from({ length: ringCount }, (_value, offset) => ringStart + offset).filter(
-          (index) => index < layouts.length
-        );
-
-        rings.push(ring);
-        ringStart += ringCount;
-      });
-
-      rings.forEach((ring, ringIndex) => {
-        const isPolarRing = ringIndex === 0 || ringIndex === rings.length - 1;
-
-        if (ring.length < 2) {
-          return;
-        }
-
-        ring.forEach((fromIndex, sortedIndex) => {
-          const toIndex = ring[sortedIndex + 1] ?? (ring.length > 3 ? ring[0] : undefined);
-
-          if (toIndex === undefined) {
-            return;
-          }
-
-          drawEdge(fromIndex, toIndex, isPolarRing ? 0.4 : 0.54);
-        });
-      });
+      rings.forEach((ring, ringIndex) => drawRingEdges(meshContext, ring, ringIndex, rings.length));
 
       for (let ringIndex = 0; ringIndex < rings.length - 1; ringIndex += 1) {
-        const upperRing = rings[ringIndex];
-        const lowerRing = rings[ringIndex + 1];
-
-        if (upperRing.length < 2 || lowerRing.length < 2) {
-          continue;
-        }
-
-        const cellCount = Math.min(upperRing.length, lowerRing.length);
-
-        for (let cellIndex = 0; cellIndex < cellCount; cellIndex += 1) {
-          const upperA = upperRing[cellIndex % upperRing.length];
-          const upperB = upperRing[(cellIndex + 1) % upperRing.length];
-          const lowerA = lowerRing[cellIndex % lowerRing.length];
-          const lowerB = lowerRing[(cellIndex + 1) % lowerRing.length];
-          const uniqueCellNodes = new Set([upperA, upperB, lowerA, lowerB]);
-
-          if (uniqueCellNodes.size < 4) {
-            continue;
-          }
-
-          drawEdge(upperA, lowerA, 0.64);
-          drawEdge(upperB, lowerB, 0.64);
-
-          if ((cellIndex + ringIndex) % 2 === 0) {
-            drawEdge(upperA, lowerB, 0.46);
-          } else {
-            drawEdge(upperB, lowerA, 0.46);
-          }
-        }
+        drawInterRingEdges(meshContext, rings[ringIndex], rings[ringIndex + 1], ringIndex);
       }
     }
 
@@ -540,6 +774,16 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
       const launchGlow = motion.drift;
       const transitionRipple = smoothStep(motion.drift / 0.24) * (1 - smoothStep((motion.drift - 0.88) / 0.12));
       const formedNodeStyle = smoothStep((motion.drift - 0.04) / 0.42);
+      const nodeContext: NodeDrawContext = {
+        ctx,
+        formedNodeStyle,
+        launchGlow,
+        motion,
+        palette,
+        theme: currentTheme,
+        time,
+        transitionRipple
+      };
 
       nodes.forEach((node, index) => {
         const idlePresence = getIdlePresence(index) ? 1 : formedNodeStyle;
@@ -553,84 +797,38 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
         const depthScale = motion.drift > 0.08 ? 0.84 + (layout.depth + 1) * 0.2 : 1;
 
         const accent = node.accent > 0.92;
-        const color = accent ? palette.violet : node.accent > 0.72 ? palette.node : palette.line;
+        const color = nodeColor(node, palette);
         const formedBoost = smoothStep((motion.drift - 0.3) / 0.7);
-        const alpha =
-          accent
-            ? currentTheme === "light"
-              ? 0.64 + pulse * 0.24
-              : 0.72 + pulse * 0.28
-            : currentTheme === "light"
-              ? 0.44 + pulse * 0.24 + formedBoost * 0.14
-              : 0.5 + pulse * 0.25 + formedBoost * 0.18;
+        const alpha = formedNodeAlpha({
+          accent,
+          formedBoost,
+          pulse,
+          theme: currentTheme
+        });
         const radius = (node.radius + pulse * 0.4 + launchGlow * (accent ? 1.28 : 0.82)) * depthScale;
         const depthAlpha = motion.drift > 0.08 ? 0.64 + Math.max(0, layout.depth) * 0.42 : 1;
         const visibleAlpha = motion.sceneOpacity * depthAlpha * idlePresence;
-        const idleAlpha = (currentTheme === "light" ? 0.5 : 0.44) * motion.sceneOpacity * idlePresence;
         const idleRadius = (node.radius * 0.66 + pulse * 0.22) * (accent ? 1.25 : 1);
 
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
 
         if (formedNodeStyle < 0.06) {
-          const idleGlowRadius = idleRadius * (accent ? 5.4 : 4.7);
-          const idleGlow = ctx.createRadialGradient(layout.x, layout.y, 0, layout.x, layout.y, idleGlowRadius);
-
-          idleGlow.addColorStop(0, `${color}${(currentTheme === "light" ? 0.14 : 0.2) * idlePresence * motion.sceneOpacity})`);
-          idleGlow.addColorStop(1, `${color}0)`);
-          ctx.fillStyle = idleGlow;
-          ctx.beginPath();
-          ctx.arc(layout.x, layout.y, idleGlowRadius, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.arc(layout.x, layout.y, idleRadius, 0, Math.PI * 2);
-          ctx.fillStyle = `${color}${idleAlpha})`;
-          ctx.fill();
+          drawIdleNode({
+            accent,
+            color,
+            context: nodeContext,
+            idlePresence,
+            idleRadius,
+            layout
+          });
           ctx.restore();
           return;
         }
 
-        if (launchGlow > 0.08) {
-          const glowRadius = radius * (accent ? 8.2 : 6.8);
-          const glow = ctx.createRadialGradient(layout.x, layout.y, 0, layout.x, layout.y, glowRadius);
-
-          glow.addColorStop(0, `${color}${(currentTheme === "light" ? launchGlow * 0.42 : launchGlow * 0.54) * visibleAlpha})`);
-          glow.addColorStop(0.34, `${color}${(currentTheme === "light" ? launchGlow * 0.14 : launchGlow * 0.2) * visibleAlpha})`);
-          glow.addColorStop(1, `${color}0)`);
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(layout.x, layout.y, glowRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (transitionRipple > 0.02) {
-          const ripplePhase = (time * 1.05 + node.phase) % 1;
-          const rippleRadius = radius * (2.25 + ripplePhase * 2.55);
-          const rippleAlpha = (1 - ripplePhase) * transitionRipple * (currentTheme === "light" ? 0.24 : 0.3) * visibleAlpha;
-
-          ctx.beginPath();
-          ctx.arc(layout.x, layout.y, rippleRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = `${color}${rippleAlpha})`;
-          ctx.lineWidth = 0.75;
-          ctx.stroke();
-        }
-
-        ctx.beginPath();
-        ctx.arc(layout.x, layout.y, radius * 1.9, 0, Math.PI * 2);
-        ctx.strokeStyle = `${color}${(currentTheme === "light" ? 0.48 : 0.62) * visibleAlpha * formedNodeStyle})`;
-        ctx.lineWidth = 0.9;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(layout.x, layout.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = `${color}${alpha * 0.78 * visibleAlpha * formedNodeStyle})`;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(layout.x, layout.y, Math.max(0.82, radius * 0.42), 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(248, 251, 255, ${(currentTheme === "light" ? 0.64 : 0.78) * visibleAlpha * formedNodeStyle})`;
-        ctx.fill();
+        drawFormedGlow({ accent, color, context: nodeContext, layout, radius, visibleAlpha });
+        drawTransitionRipple({ color, context: nodeContext, layout, node, radius, visibleAlpha });
+        drawFormedNode({ alpha, color, context: nodeContext, layout, radius, visibleAlpha });
 
         ctx.restore();
       });
