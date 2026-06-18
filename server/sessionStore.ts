@@ -54,7 +54,7 @@ function cleanupExpiredSessions(now = Date.now()) {
 
 function enforceSessionLimit() {
   while (sessions.size >= MAX_SESSIONS) {
-    const oldest = sessions.values().next().value as Session | undefined;
+    const oldest: Session | undefined = sessions.values().next().value;
 
     if (!oldest) {
       return;

@@ -40,7 +40,11 @@ export function openMeasurementEvents(
 
   for (const eventType of eventTypes) {
     source.addEventListener(eventType, (message) => {
-      const parsed = JSON.parse((message as MessageEvent).data) as MeasurementEvent;
+      if (!(message instanceof MessageEvent)) {
+        return;
+      }
+
+      const parsed = JSON.parse(message.data) as MeasurementEvent;
       onEvent(parsed);
     });
   }

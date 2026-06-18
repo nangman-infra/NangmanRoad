@@ -656,8 +656,9 @@ function downgradeSameMetroPublicGeo(candidate: GeoCandidate, source?: GeoPoint,
 
   const sourceMetro = metroForPoint(source);
   const candidateMetro = metroForPoint(candidate);
+  const sameMetro = sourceMetro?.key !== undefined && sourceMetro.key === candidateMetro?.key;
 
-  if (!sourceMetro || !candidateMetro || sourceMetro.key !== candidateMetro.key || rttMs > sourceMetro.rttMs) {
+  if (!sameMetro || rttMs > sourceMetro.rttMs) {
     return candidate;
   }
 

@@ -274,99 +274,103 @@ export function App() {
     isJourneyLaunching,
     shouldShowResult
   });
+  const mainClassName = [
+    "mx-auto flex min-h-screen w-full flex-col",
+    shouldDisplayResult
+      ? "max-w-[1880px] px-3 py-3 sm:px-4 lg:px-5 2xl:px-6"
+      : "max-w-6xl px-4 py-5 sm:px-6 lg:px-8"
+  ].join(" ");
+  let pageContent = (
+    <section className="flex flex-1 flex-col items-center justify-center pb-20">
+      <div className="theme-eyebrow mb-10 flex items-center gap-3">
+        <NetworkMark className="theme-network-mark h-5 w-5" />
+        <span className="text-xs uppercase tracking-[0.34em]">Network route search</span>
+      </div>
+      <h1 className="theme-title text-center text-5xl font-semibold tracking-normal sm:text-7xl">
+        Nangman Road
+      </h1>
+      <SearchForm
+        target={target}
+        mode={mode}
+        error={error}
+        disabled={isBusy}
+        onTargetChange={setTarget}
+        onModeChange={setMode}
+        onSubmit={start}
+      />
+    </section>
+  );
+
+  if (shouldDisplayResult) {
+    pageContent = (
+      <section className="route-result-shell flex min-h-[calc(100dvh-1.5rem)] flex-col">
+        <header className="result-topbar mb-3 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={reset}
+            className="theme-brand-link inline-flex items-center gap-2 text-lg font-semibold transition hover:text-signal-cyan"
+          >
+            <NetworkMark className="theme-network-mark h-4 w-4" />
+            Nangman Road
+          </button>
+          <button
+            type="button"
+            onClick={() => setResultView((current) => (current === "map" ? "terminal" : "map"))}
+            className="result-view-toggle inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold"
+          >
+            {resultView === "map" ? (
+              <>
+                <Terminal className="h-4 w-4" aria-hidden="true" />
+                Terminal result
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </>
+            ) : (
+              <>
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                <MapIcon className="h-4 w-4" aria-hidden="true" />
+                Route map
+              </>
+            )}
+          </button>
+        </header>
+
+        <div className="result-stage flex min-h-0 flex-1">
+          {resultView === "map" ? (
+            <RouteVisualization
+              mode={mode}
+              status={status}
+              target={target}
+              hops={hops}
+              source={latestResult?.source}
+              theme={theme}
+            />
+          ) : (
+            <TerminalOutput
+              error={error}
+              hops={hops}
+              mode={mode}
+              result={latestResult}
+              status={status}
+              target={target}
+            />
+          )}
+        </div>
+      </section>
+    );
+  } else if (hasSearched) {
+    pageContent = (
+      <JourneyLaunchStage
+        hopCount={hops.length}
+        mode={mode}
+        sourceLabel={latestResult?.source ? formatSourceLabel(latestResult.source) : undefined}
+        target={target}
+      />
+    );
+  }
 
   return (
     <AppShell journeyState={journeyState} theme={theme}>
-      <main
-        className={[
-          "mx-auto flex min-h-screen w-full flex-col",
-          shouldDisplayResult
-            ? "max-w-[1880px] px-3 py-3 sm:px-4 lg:px-5 2xl:px-6"
-            : "max-w-6xl px-4 py-5 sm:px-6 lg:px-8"
-        ].join(" ")}
-      >
-        {!hasSearched ? (
-          <section className="flex flex-1 flex-col items-center justify-center pb-20">
-            <div className="theme-eyebrow mb-10 flex items-center gap-3">
-              <NetworkMark className="theme-network-mark h-5 w-5" />
-              <span className="text-xs uppercase tracking-[0.34em]">Network route search</span>
-            </div>
-            <h1 className="theme-title text-center text-5xl font-semibold tracking-normal sm:text-7xl">
-              Nangman Road
-            </h1>
-            <SearchForm
-              target={target}
-              mode={mode}
-              error={error}
-              disabled={isBusy}
-              onTargetChange={setTarget}
-              onModeChange={setMode}
-              onSubmit={start}
-            />
-          </section>
-        ) : !shouldDisplayResult ? (
-          <JourneyLaunchStage
-            hopCount={hops.length}
-            mode={mode}
-            sourceLabel={latestResult?.source ? formatSourceLabel(latestResult.source) : undefined}
-            target={target}
-          />
-        ) : (
-          <section className="route-result-shell flex min-h-[calc(100dvh-1.5rem)] flex-col">
-            <header className="result-topbar mb-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={reset}
-                className="theme-brand-link inline-flex items-center gap-2 text-lg font-semibold transition hover:text-signal-cyan"
-              >
-                <NetworkMark className="theme-network-mark h-4 w-4" />
-                Nangman Road
-              </button>
-              <button
-                type="button"
-                onClick={() => setResultView((current) => (current === "map" ? "terminal" : "map"))}
-                className="result-view-toggle inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold"
-              >
-                {resultView === "map" ? (
-                  <>
-                    <Terminal className="h-4 w-4" aria-hidden="true" />
-                    Terminal result
-                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                  </>
-                ) : (
-                  <>
-                    <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                    <MapIcon className="h-4 w-4" aria-hidden="true" />
-                    Route map
-                  </>
-                )}
-              </button>
-            </header>
-
-            <div className="result-stage flex min-h-0 flex-1">
-              {resultView === "map" ? (
-                <RouteVisualization
-                  mode={mode}
-                  status={status}
-                  target={target}
-                  hops={hops}
-                  source={latestResult?.source}
-                  theme={theme}
-                />
-              ) : (
-                <TerminalOutput
-                  error={error}
-                  hops={hops}
-                  mode={mode}
-                  result={latestResult}
-                  status={status}
-                  target={target}
-                />
-              )}
-            </div>
-          </section>
-        )}
-      </main>
+      <main className={mainClassName}>{pageContent}</main>
       <ThemeToggle theme={theme} onChange={setTheme} />
     </AppShell>
   );

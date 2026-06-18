@@ -127,19 +127,33 @@ function markerRoleLabel(role: GeoPoint["role"]) {
   return undefined;
 }
 
+function formatPacketLossMetric(hop: HopResult) {
+  if (typeof hop.packetLossPercent === "number" && hop.packetLossPercent > 0) {
+    const precision = hop.packetLossPercent % 1 === 0 ? 0 : 1;
+
+    return `${hop.packetLossPercent.toFixed(precision)}% loss`;
+  }
+
+  return undefined;
+}
+
+function formatStatusMetric(status: HopResult["status"]) {
+  if (status === "ok") {
+    return undefined;
+  }
+
+  return status;
+}
+
 function formatMetricLabel(hop?: HopResult) {
   if (!hop) {
     return undefined;
   }
 
-  const packetLoss =
-    typeof hop.packetLossPercent === "number" && hop.packetLossPercent > 0
-      ? `${hop.packetLossPercent.toFixed(hop.packetLossPercent % 1 === 0 ? 0 : 1)}% loss`
-      : undefined;
   const metrics = [
     typeof hop.rttMs === "number" ? `${Math.round(hop.rttMs)} ms avg` : undefined,
-    packetLoss,
-    hop.status !== "ok" ? hop.status : undefined
+    formatPacketLossMetric(hop),
+    formatStatusMetric(hop.status)
   ].filter(Boolean);
 
   return metrics.join(" · ") || undefined;

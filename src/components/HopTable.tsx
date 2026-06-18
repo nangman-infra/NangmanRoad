@@ -18,6 +18,14 @@ function statusClass(status: HopResult["status"]) {
   return "text-signal-cyan";
 }
 
+function formatPacketLoss(value?: number) {
+  if (value === undefined) {
+    return "-";
+  }
+
+  return `${value}%`;
+}
+
 export function HopTable({ hops, status }: HopTableProps) {
   return (
     <section className="theme-side-panel min-h-0 flex-1 rounded-lg border p-4 shadow-2xl shadow-black/10 backdrop-blur">
@@ -62,9 +70,7 @@ export function HopTable({ hops, status }: HopTableProps) {
                     </div>
                   </td>
                   <td className="theme-panel-muted px-2 py-3">{hop.rttMs ? `${hop.rttMs} ms` : "-"}</td>
-                  <td className="theme-panel-muted rounded-r-lg px-2 py-3">
-                    {hop.packetLossPercent !== undefined ? `${hop.packetLossPercent}%` : "-"}
-                  </td>
+                  <td className="theme-panel-muted rounded-r-lg px-2 py-3">{formatPacketLoss(hop.packetLossPercent)}</td>
                 </tr>
               ))}
             </tbody>

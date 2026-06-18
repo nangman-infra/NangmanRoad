@@ -91,7 +91,7 @@ function assertPublicIp(target: string) {
 
 export function normalizeTarget(input: unknown): string {
   if (typeof input !== "string") {
-    throw new Error("Target must be a domain or IP address.");
+    throw new TypeError("Target must be a domain or IP address.");
   }
 
   const target = input.trim().toLowerCase();

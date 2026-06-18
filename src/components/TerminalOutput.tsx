@@ -1,4 +1,5 @@
 import { Terminal } from "lucide-react";
+import type { ReactNode } from "react";
 import type {
   HopResult,
   MeasurementResult,
@@ -22,7 +23,13 @@ function formatRtt(value?: number) {
 }
 
 function formatLoss(value?: number) {
-  return typeof value === "number" ? `${value.toFixed(value % 1 === 0 ? 0 : 1)}%` : "-";
+  if (typeof value === "number") {
+    const precision = value % 1 === 0 ? 0 : 1;
+
+    return `${value.toFixed(precision)}%`;
+  }
+
+  return "-";
 }
 
 function formatAsn(hop: HopResult) {
@@ -101,8 +108,12 @@ function emptyOutputLine(error?: string) {
   return error ? `error  ${error}` : "no completed route output";
 }
 
-function traceoutLines(hops: HopResult[], hasResult: boolean, error?: string) {
-  return hasResult ? hops.map((hop) => traceoutLine(hop)) : [emptyOutputLine(error)];
+function traceoutLines(hops: HopResult[]) {
+  return hops.map((hop) => traceoutLine(hop));
+}
+
+function traceoutEmptyLines(error?: string) {
+  return [emptyOutputLine(error)];
 }
 
 function TerminalCommandBlock({ lines }: Readonly<{ lines: string[] }>) {
@@ -148,28 +159,32 @@ function MtrTable({ hops }: Readonly<{ hops: HopResult[] }>) {
   );
 }
 
-function MtrOutput(params: { commandLines: string[]; error?: string; hasResult: boolean; hops: HopResult[] }) {
+function MtrOutput(params: Readonly<{ commandLines: string[]; resultContent: ReactNode }>) {
   return (
     <div className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
       <TerminalCommandBlock lines={params.commandLines} />
-      {params.hasResult ? <MtrTable hops={params.hops} /> : <div className="terminal-empty-line">{emptyOutputLine(params.error)}</div>}
+      {params.resultContent}
     </div>
   );
 }
 
-function TraceoutOutput(params: { commandLines: string[]; error?: string; hasResult: boolean; hops: HopResult[] }) {
+function TraceoutOutput(params: Readonly<{ commandLines: string[]; resultLines: string[] }>) {
   return (
     <pre className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
       <code>
-        {[...params.commandLines, "", "#     RTT  STATE    HOST", ...traceoutLines(params.hops, params.hasResult, params.error)].join("\n")}
+        {[...params.commandLines, "", "#     RTT  STATE    HOST", ...params.resultLines].join("\n")}
       </code>
     </pre>
   );
 }
 
 export function TerminalOutput({ error, hops, mode, result, status, target }: TerminalOutputProps) {
-  const hasResult = status === "finished" && hops.length > 0;
+  const shouldRenderResultOutput = status === "finished" && hops.length > 0;
   const lines = commandLines({ mode, result, target });
+  const mtrResultContent = shouldRenderResultOutput
+    ? <MtrTable hops={hops} />
+    : <div className="terminal-empty-line">{emptyOutputLine(error)}</div>;
+  const traceoutResultLines = shouldRenderResultOutput ? traceoutLines(hops) : traceoutEmptyLines(error);
 
   return (
     <aside className="terminal-panel flex min-h-0 flex-col overflow-hidden rounded-lg border">
@@ -188,9 +203,9 @@ export function TerminalOutput({ error, hops, mode, result, status, target }: Te
       </div>
 
       {mode === "mtr" ? (
-        <MtrOutput commandLines={lines} error={error} hasResult={hasResult} hops={hops} />
+        <MtrOutput commandLines={lines} resultContent={mtrResultContent} />
       ) : (
-        <TraceoutOutput commandLines={lines} error={error} hasResult={hasResult} hops={hops} />
+        <TraceoutOutput commandLines={lines} resultLines={traceoutResultLines} />
       )}
     </aside>
   );

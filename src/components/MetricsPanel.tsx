@@ -21,6 +21,14 @@ function average(values: number[]) {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
+function formatAverageLoss(value?: number) {
+  if (value === undefined) {
+    return "-";
+  }
+
+  return `${value}%`;
+}
+
 export function MetricsPanel({ result, hops, mode, status }: MetricsPanelProps) {
   const rtts = hops.map((hop) => hop.rttMs).filter((value): value is number => typeof value === "number");
   const losses = hops
@@ -43,7 +51,7 @@ export function MetricsPanel({ result, hops, mode, status }: MetricsPanelProps) 
         <Metric label="Mode" value={mode === "traceout" ? "Traceout" : "MTR"} />
         <Metric label="Status" value={status} />
         <Metric label="Avg RTT" value={avgRtt ? `${avgRtt} ms` : "-"} />
-        <Metric label="Avg loss" value={avgLoss !== undefined ? `${avgLoss}%` : "-"} />
+        <Metric label="Avg loss" value={formatAverageLoss(avgLoss)} />
       </div>
 
       <div className="theme-inner-panel mt-4 rounded-lg border p-3">

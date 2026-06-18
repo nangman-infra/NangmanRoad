@@ -460,7 +460,7 @@ function parseRawHop(line: string): HopResult | undefined {
   const waitingForReply = rest.includes("(waiting for reply)") || /\*\s+\*/.test(rest);
   const ip = IPV4_PATTERN.exec(rest)?.[1];
   const metrics = parseMtrMetrics(tokens);
-  const rttMs = metrics.avgRtt !== undefined ? Math.round(metrics.avgRtt) : averageRtt(rttValues(rest));
+  const rttMs = metrics.avgRtt === undefined ? averageRtt(rttValues(rest)) : Math.round(metrics.avgRtt);
   const hostname = rawHopHostname(tokens, waitingForReply);
   const loss = metrics.loss ?? (waitingForReply || rest.includes("*") ? 100 : 0);
 
@@ -474,7 +474,7 @@ function parseRawHop(line: string): HopResult | undefined {
     lastMs: rttMs,
     bestMs: undefined,
     worstMs: undefined,
-    jitterMs: metrics.jitterMs !== undefined ? Math.round(metrics.jitterMs) : undefined,
+    jitterMs: metrics.jitterMs === undefined ? undefined : Math.round(metrics.jitterMs),
     packetLossPercent: loss,
     status: normalizeStatus(rttMs, loss)
   };
