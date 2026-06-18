@@ -16,11 +16,53 @@ interface Session {
   target: string;
   mode: TraceMode;
   status: MeasurementStatus;
+  createdAt: number;
   events: MeasurementEvent[];
   listeners: Set<Listener>;
+  cleanupTimer?: ReturnType<typeof setTimeout>;
 }
 
 const sessions = new Map<string, Session>();
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS ?? 15 * 60_000);
+const FINISHED_SESSION_TTL_MS = Number(process.env.FINISHED_SESSION_TTL_MS ?? 2 * 60_000);
+const MAX_SESSIONS = Number(process.env.MAX_SESSIONS ?? 500);
+
+function deleteSession(session: Session) {
+  if (session.cleanupTimer) {
+    clearTimeout(session.cleanupTimer);
+  }
+
+  session.listeners.clear();
+  sessions.delete(session.id);
+}
+
+function scheduleSessionCleanup(session: Session, delayMs: number) {
+  if (session.cleanupTimer) {
+    clearTimeout(session.cleanupTimer);
+  }
+
+  session.cleanupTimer = setTimeout(() => deleteSession(session), delayMs);
+}
+
+function cleanupExpiredSessions(now = Date.now()) {
+  for (const session of sessions.values()) {
+    if (now - session.createdAt > SESSION_TTL_MS) {
+      deleteSession(session);
+    }
+  }
+}
+
+function enforceSessionLimit() {
+  while (sessions.size >= MAX_SESSIONS) {
+    const oldest = sessions.values().next().value as Session | undefined;
+
+    if (!oldest) {
+      return;
+    }
+
+    deleteSession(oldest);
+  }
+}
 
 function publish(session: Session, event: MeasurementEvent) {
   session.events.push(event);
@@ -31,10 +73,12 @@ function publish(session: Session, event: MeasurementEvent) {
 
   if (event.type === "measurement_finished") {
     session.status = "finished";
+    scheduleSessionCleanup(session, FINISHED_SESSION_TTL_MS);
   }
 
   if (event.type === "error") {
     session.status = "error";
+    scheduleSessionCleanup(session, FINISHED_SESSION_TTL_MS);
   }
 
   for (const listener of session.listeners) {
@@ -59,21 +103,27 @@ async function runMeasurement(session: Session, visitor?: VisitorContext) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Live provider unavailable.";
+    console.warn(`Live provider unavailable for ${session.id}. Falling back to demo provider. ${message}`);
+  }
+
+  try {
+    for await (const event of runDemoMeasurement({
+      id: session.id,
+      target: session.target,
+      mode: session.mode,
+      visitor
+    })) {
+      publish(session, event);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Demo provider unavailable.";
+    console.warn(`Demo provider unavailable for ${session.id}. ${message}`);
     publish(session, {
       type: "error",
       payload: {
-        message: `Live provider unavailable. Falling back to demo provider. ${message}`
+        message: "Measurement is temporarily unavailable. Please try again later."
       }
     });
-  }
-
-  for await (const event of runDemoMeasurement({
-    id: session.id,
-    target: session.target,
-    mode: session.mode,
-    visitor
-  })) {
-    publish(session, event);
   }
 }
 
@@ -82,16 +132,21 @@ export function createSession(params: {
   mode: TraceMode;
   visitor?: VisitorContext;
 }) {
+  cleanupExpiredSessions();
+  enforceSessionLimit();
+
   const session: Session = {
     id: nanoid(10),
     target: params.target,
     mode: params.mode,
     status: "starting",
+    createdAt: Date.now(),
     events: [],
     listeners: new Set()
   };
 
   sessions.set(session.id, session);
+  scheduleSessionCleanup(session, SESSION_TTL_MS);
   void runMeasurement(session, params.visitor);
 
   return {

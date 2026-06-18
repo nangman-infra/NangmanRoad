@@ -4,6 +4,8 @@ import express from "express";
 import cors from "cors";
 import { createSession, getSession, subscribe } from "./sessionStore";
 import { rateLimit } from "./rateLimit";
+import { applySecurityHeaders, corsOptions } from "./security";
+import { sendIndexHtml, sendRobotsTxt, sendSitemapXml } from "./seo";
 import { normalizeMode, normalizeTarget } from "./validation";
 import type { CreateMeasurementRequest, MeasurementEvent } from "../shared/types";
 
@@ -12,9 +14,19 @@ const port = Number(process.env.PORT ?? 8787);
 const currentFile = fileURLToPath(import.meta.url);
 const currentDirectory = path.dirname(currentFile);
 const clientDistDirectory = process.env.CLIENT_DIST_DIR ?? path.resolve(currentDirectory, "../dist");
+const clientIndexPath = path.join(clientDistDirectory, "index.html");
 
-app.use(cors());
+if (process.env.TRUST_PROXY) {
+  app.set("trust proxy", process.env.TRUST_PROXY);
+}
+
+app.disable("x-powered-by");
+app.use(applySecurityHeaders);
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "24kb" }));
+
+app.get("/robots.txt", sendRobotsTxt);
+app.get("/sitemap.xml", sendSitemapXml);
 
 app.get("/api/health", (_req, res) => {
   res.json({
@@ -84,10 +96,8 @@ app.get("*", (req, res) => {
     return;
   }
 
-  res.sendFile(path.join(clientDistDirectory, "index.html"), (error) => {
-    if (error) {
-      res.status(404).json({ error: "Not found." });
-    }
+  sendIndexHtml(req, res, clientIndexPath).catch(() => {
+    res.status(404).json({ error: "Not found." });
   });
 });
 

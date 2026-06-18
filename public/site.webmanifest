@@ -1,0 +1,17 @@
+{
+  "name": "Nangman Road",
+  "short_name": "Nangman Road",
+  "description": "Install-free network route visualization from nearby distributed probes.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050812",
+  "theme_color": "#050812",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
