@@ -33,7 +33,7 @@ pipeline {
         HARBOR_CREDS_ID = 'NANGMAN_HARBOR_ROBOT_ACCOUNT'
         IMAGE_NAME = 'nangman-road'
         WATCHTOWER_URL = 'http://172.16.0.37:18081'
-        WATCHTOWER_TOKEN = credentials('nangman-personal-web-watchtower-token')
+        WATCHTOWER_TOKEN = credentials('nangman-infra-hooni-road-watchtower-token')
         APP_HEALTH_URL = 'http://172.16.0.37:8787/api/health'
         DEPLOY_TIMEOUT_SECONDS = '180'
         SONARQUBE_INSTALLATION = 'sonarqube'
