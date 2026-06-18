@@ -114,6 +114,75 @@ describe("enrichHopsWithGeo", () => {
     });
   });
 
+  it.each([
+    {
+      city: "Seoul",
+      country: "KR",
+      ip: "8.8.4.4",
+      latitude: 37.57,
+      longitude: 126.98,
+      rttMs: 8,
+      expectedCity: "Seoul metro"
+    },
+    {
+      city: "Tokyo",
+      country: "JP",
+      ip: "9.9.9.9",
+      latitude: 35.6762,
+      longitude: 139.6503,
+      rttMs: 20,
+      expectedCity: "Tokyo"
+    },
+    {
+      city: "Hong Kong",
+      country: "HK",
+      ip: "1.0.0.1",
+      latitude: 22.3193,
+      longitude: 114.1694,
+      rttMs: 60,
+      expectedCity: "Hong Kong"
+    }
+  ])("uses RTT support when ranking $city provider evidence", async (candidate) => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://geo.example.test";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      countryCode: "DE",
+      city: "Frankfurt",
+      lat: 50.1109,
+      lon: 8.6821
+    }))));
+
+    const [hop] = await enrichHopsWithGeo({
+      source: {
+        provider: "globalping",
+        city: "Seoul",
+        country: "KR",
+        latitude: 37.57,
+        longitude: 126.98,
+        note: "Measured from a nearby network probe."
+      },
+      hops: [
+        {
+          hopNumber: 1,
+          ip: candidate.ip,
+          city: candidate.city,
+          country: candidate.country,
+          latitude: candidate.latitude,
+          longitude: candidate.longitude,
+          rttMs: candidate.rttMs,
+          status: "ok"
+        }
+      ]
+    });
+
+    expect(hop).toMatchObject({
+      city: candidate.expectedCity,
+      country: candidate.country,
+      locationSource: "provider"
+    });
+  });
+
   it("marks unresolved private hops as low-confidence unknown locations", async () => {
     process.env.GEOIP_PROVIDER = "none";
 
@@ -134,6 +203,36 @@ describe("enrichHopsWithGeo", () => {
       locationSource: "unknown",
       status: "timeout"
     });
+  });
+
+  it("does not query GeoIP for private or reserved address ranges", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://geo.example.test";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const hops = await enrichHopsWithGeo({
+      hops: [
+        "0.0.0.1",
+        "10.0.0.1",
+        "100.64.0.1",
+        "127.0.0.1",
+        "169.254.1.1",
+        "172.16.0.1",
+        "192.0.2.1",
+        "192.168.0.1",
+        "198.51.100.1",
+        "203.0.113.1",
+        "224.0.0.1"
+      ].map((ip, index) => ({
+        hopNumber: index + 1,
+        ip,
+        status: "timeout" as const
+      }))
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(hops.every((hop) => hop.locationSource === "unknown")).toBe(true);
   });
 });
 

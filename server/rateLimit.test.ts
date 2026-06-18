@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { rateLimit } from "./rateLimit";
 
 function request(ip: string) {
@@ -24,6 +24,10 @@ function response() {
 }
 
 describe("rateLimit", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("allows requests below the per-minute threshold", () => {
     const res = response();
     const next = vi.fn();
@@ -50,5 +54,23 @@ describe("rateLimit", () => {
     expect(res.body).toEqual({
       error: "Too many measurement requests. Please wait a minute and try again."
     });
+  });
+
+  it("allows the same client again after the minute window resets", () => {
+    vi.useFakeTimers();
+    const ip = "203.0.113.12";
+
+    for (let index = 0; index < 8; index += 1) {
+      rateLimit(request(ip), response(), vi.fn());
+    }
+
+    vi.advanceTimersByTime(60_001);
+
+    const res = response();
+    const next = vi.fn();
+    rateLimit(request(ip), res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.status).not.toHaveBeenCalled();
   });
 });

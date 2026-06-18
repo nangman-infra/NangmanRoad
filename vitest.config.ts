@@ -9,6 +9,7 @@ export default defineConfig({
       include: ["server/**/*.ts", "shared/**/*.ts"],
       exclude: ["server/index.ts", "server/**/*.test.ts"],
       thresholds: {
+        branches: 75,
         statements: 80,
         functions: 80,
         lines: 80

@@ -63,6 +63,30 @@ describe("corsOptions", () => {
       origin: false
     });
   });
+
+  it("allows same-host origins and local development origins", async () => {
+    await expect(evaluateCors({
+      host: "road.example.com",
+      origin: "https://road.example.com"
+    })).resolves.toMatchObject({
+      origin: "https://road.example.com"
+    });
+
+    await expect(evaluateCors({
+      host: "127.0.0.1:8787",
+      origin: "http://127.0.0.1:5173"
+    })).resolves.toMatchObject({
+      origin: "http://127.0.0.1:5173"
+    });
+  });
+
+  it("rejects requests without an origin header", async () => {
+    await expect(evaluateCors({
+      host: "road.example.com"
+    })).resolves.toMatchObject({
+      origin: false
+    });
+  });
 });
 
 describe("applySecurityHeaders", () => {
@@ -83,5 +107,14 @@ describe("applySecurityHeaders", () => {
     expect(res.headers.get("X-Frame-Options")).toBe("DENY");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=");
+  });
+
+  it("allows HSTS to be disabled for non-TLS local deployments", () => {
+    process.env.ENABLE_HSTS = "false";
+    const res = response();
+
+    applySecurityHeaders(request(), res, vi.fn());
+
+    expect(res.headers.has("Strict-Transport-Security")).toBe(false);
   });
 });

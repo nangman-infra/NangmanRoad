@@ -111,6 +111,41 @@ describe("parseResultHops", () => {
       status: "loss"
     });
   });
+
+  it("normalizes ASN variants from structured provider data", () => {
+    const hops = parseResultHops({
+      hops: [
+        {
+          resolvedAddress: "203.0.113.10",
+          asn: "AS???",
+          stats: { avg: 10 }
+        },
+        {
+          resolvedAddress: "203.0.113.11",
+          network: { number: "15169", name: "Google" },
+          stats: { avg: 11 }
+        },
+        {
+          resolvedAddress: "203.0.113.12",
+          as: { id: { value: "13335" }, name: "Cloudflare" },
+          stats: { avg: 12 }
+        }
+      ]
+    });
+
+    expect(hops.map((hop) => hop.asn)).toEqual(["AS???", "AS15169", "AS13335"]);
+  });
+
+  it("marks private raw hops with unknown ASN", () => {
+    const hops = parseRawTraceroute(`
+      1 edge.local 10.0.0.1 1.0 ms
+      2 gateway.local 172.20.0.1 2.0 ms
+      3 lan.local 192.168.0.1 3.0 ms
+      4 cgnat.local 100.64.0.1 4.0 ms
+    `);
+
+    expect(hops.map((hop) => hop.asn)).toEqual(["AS???", "AS???", "AS???", "AS???"]);
+  });
 });
 
 describe("runGlobalpingMeasurement", () => {
@@ -195,5 +230,150 @@ describe("runGlobalpingMeasurement", () => {
     await expect(events.next()).resolves.toMatchObject({
       done: true
     });
+  });
+
+  it("retries MTR with TCP when ICMP is rejected by the provider", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "icmp-measurement" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "finished",
+        results: [
+          {
+            result: {
+              status: "failed",
+              rawOutput: "Target contains private IP ranges and is not allowed with ICMP."
+            }
+          }
+        ]
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "tcp-measurement" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "finished",
+        results: [
+          {
+            probe: {
+              id: "probe-tokyo",
+              city: "Tokyo",
+              country: "JP",
+              asn: "AS64500",
+              latitude: 35.67,
+              longitude: 139.65
+            },
+            hops: [
+              {
+                resolvedAddress: "8.8.8.8",
+                resolvedHostname: "dns.google",
+                stats: {
+                  avg: 22.2,
+                  loss: 0,
+                  jAvg: 0.6,
+                  sent: 16
+                },
+                location: {
+                  city: "Tokyo",
+                  country: "JP",
+                  lat: 35.67,
+                  lon: 139.65
+                }
+              }
+            ]
+          }
+        ]
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const events = runGlobalpingMeasurement({
+      id: "measurement-mtr",
+      mode: "mtr",
+      target: "8.8.8.8"
+    });
+
+    await events.next();
+
+    const hopEvent = events.next();
+    await vi.advanceTimersByTimeAsync(1_250);
+    await vi.advanceTimersByTimeAsync(1_250);
+    await expect(hopEvent).resolves.toMatchObject({
+      value: {
+        type: "hop_result",
+        payload: {
+          ip: "8.8.8.8",
+          rttMs: 22
+        }
+      }
+    });
+    await expect(events.next()).resolves.toMatchObject({
+      value: {
+        type: "metric_update",
+        payload: {
+          hopNumber: 1,
+          jitterMs: 1,
+          packetLossPercent: 0
+        }
+      }
+    });
+    await expect(events.next()).resolves.toMatchObject({
+      value: {
+        type: "measurement_finished",
+        payload: {
+          status: "finished"
+        }
+      }
+    });
+
+    const createBodies = fetchMock.mock.calls
+      .filter(([, init]) => init && typeof init === "object" && "body" in init)
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+
+    expect(createBodies.map((body) => body.measurementOptions.protocol)).toEqual(["ICMP", "TCP"]);
+  });
+
+  it("throws a sanitized provider error when a traceout measurement fails", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "traceout-measurement" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "finished",
+        results: [
+          {
+            result: {
+              status: "failed",
+              rawOutput: "provider refused target"
+            }
+          }
+        ]
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const events = runGlobalpingMeasurement({
+      id: "measurement-failed",
+      mode: "traceout",
+      target: "example.com"
+    });
+
+    await events.next();
+    const failed = expect(events.next()).rejects.toThrow("Globalping measurement failed. provider refused target");
+    await vi.advanceTimersByTimeAsync(1_250);
+    await failed;
+  });
+
+  it("throws when the provider create request fails", async () => {
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+
+    const events = runGlobalpingMeasurement({
+      id: "measurement-create-failed",
+      mode: "traceout",
+      target: "example.com"
+    });
+
+    await events.next();
+
+    await expect(events.next()).rejects.toThrow("Globalping returned 503");
   });
 });

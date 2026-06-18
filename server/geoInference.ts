@@ -230,7 +230,7 @@ function isPublicIp(ip?: string): ip is string {
     return false;
   }
 
-  const [a, b] = octets;
+  const [a, b, c] = octets;
 
   return !(
     a === 0 ||
@@ -242,6 +242,8 @@ function isPublicIp(ip?: string): ip is string {
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 192 && b === 0) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
     (a === 198 && (b === 18 || b === 19))
   );
 }
