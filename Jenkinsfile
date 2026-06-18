@@ -175,7 +175,7 @@ pipeline {
                                     sonar.sources=${env.SONAR_SOURCES}
                                     sonar.exclusions=**/node_modules/**,**/dist/**,**/dist-server/**,**/coverage/**,**/*.config.*,**/*.d.ts
                                     sonar.test.inclusions=**/*.test.ts,**/*.test.tsx
-                                    sonar.coverage.exclusions=src/**,**/*.test.ts,**/*.test.tsx
+                                    sonar.coverage.exclusions=src/**,server/index.ts,**/*.test.ts,**/*.test.tsx
                                     ${coverageLine}
                                     sonar.javascript.node.maxspace=4096
                                 """.stripIndent().trim() + '\n'

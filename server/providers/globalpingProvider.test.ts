@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { parseRawTraceroute, parseResultHops } from "./globalpingProvider";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseRawTraceroute, parseResultHops, runGlobalpingMeasurement } from "./globalpingProvider";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+  delete process.env.GLOBALPING_API_URL;
+});
 
 describe("parseRawTraceroute", () => {
   it("parses traceroute-style raw hop output", () => {
@@ -103,6 +109,91 @@ describe("parseResultHops", () => {
       ip: "203.0.113.7",
       packetLossPercent: 75,
       status: "loss"
+    });
+  });
+});
+
+describe("runGlobalpingMeasurement", () => {
+  it("streams started, hop, and finished events from a completed provider response", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "provider-1" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "finished",
+        results: [
+          {
+            probe: {
+              id: "probe-seoul",
+              city: "Seoul",
+              country: "KR",
+              asn: 12345,
+              latitude: 37.57,
+              longitude: 126.98
+            },
+            hops: [
+              {
+                resolvedAddress: "1.1.1.1",
+                resolvedHostname: "one.one.one.one",
+                stats: {
+                  avg: 13.4,
+                  loss: 0,
+                  sent: 16
+                },
+                location: {
+                  city: "Seoul",
+                  country: "KR",
+                  lat: 37.57,
+                  lon: 126.98
+                }
+              }
+            ]
+          }
+        ]
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const events = runGlobalpingMeasurement({
+      id: "measurement-1",
+      mode: "traceout",
+      target: "1.1.1.1"
+    });
+
+    await expect(events.next()).resolves.toMatchObject({
+      value: {
+        type: "measurement_started",
+        payload: {
+          status: "running",
+          target: "1.1.1.1"
+        }
+      }
+    });
+
+    const hopEvent = events.next();
+    await vi.advanceTimersByTimeAsync(1_250);
+    await expect(hopEvent).resolves.toMatchObject({
+      value: {
+        type: "hop_result",
+        payload: {
+          hopNumber: 1,
+          ip: "1.1.1.1",
+          rttMs: 13,
+          status: "ok"
+        }
+      }
+    });
+    await expect(events.next()).resolves.toMatchObject({
+      value: {
+        type: "measurement_finished",
+        payload: {
+          confidence: "medium",
+          status: "finished"
+        }
+      }
+    });
+    await expect(events.next()).resolves.toMatchObject({
+      done: true
     });
   });
 });

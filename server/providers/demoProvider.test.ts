@@ -76,4 +76,57 @@ describe("runDemoMeasurement", () => {
       }
     });
   });
+
+  it("streams MTR metric updates before finishing", async () => {
+    vi.useFakeTimers();
+
+    const events = runDemoMeasurement({
+      id: "demo-mtr",
+      mode: "mtr",
+      target: "1.1.1.1"
+    });
+
+    await events.next();
+
+    for (let index = 0; index < 5; index += 1) {
+      const hopEvent = events.next();
+      await vi.advanceTimersByTimeAsync(520);
+      await hopEvent;
+    }
+
+    const metricEvent = events.next();
+    await vi.advanceTimersByTimeAsync(750);
+    await expect(metricEvent).resolves.toMatchObject({
+      value: {
+        type: "metric_update",
+        payload: {
+          hopNumber: 1,
+          packetLossPercent: 0
+        }
+      }
+    });
+
+    for (let index = 0; index < 4; index += 1) {
+      await events.next();
+    }
+
+    for (let round = 0; round < 3; round += 1) {
+      const nextRound = events.next();
+      await vi.advanceTimersByTimeAsync(750);
+      await nextRound;
+
+      for (let index = 0; index < 4; index += 1) {
+        await events.next();
+      }
+    }
+
+    await expect(events.next()).resolves.toMatchObject({
+      value: {
+        type: "measurement_finished",
+        payload: {
+          status: "finished"
+        }
+      }
+    });
+  });
 });
