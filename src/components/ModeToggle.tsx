@@ -1,10 +1,10 @@
 import type { TraceMode } from "../../shared/types";
 
-interface ModeToggleProps {
+type ModeToggleProps = Readonly<{
   value: TraceMode;
   disabled: boolean;
   onChange: (mode: TraceMode) => void;
-}
+}>;
 
 export function ModeToggle({ value, disabled, onChange }: ModeToggleProps) {
   return (

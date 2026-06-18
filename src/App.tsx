@@ -16,14 +16,13 @@ const initialTarget = "";
 const themeStorageKey = "nangman-road-theme";
 const minimumJourneyDurationMs = 1900;
 
-function NetworkMark({ className = "" }: { className?: string }) {
+function NetworkMark({ className = "" }: Readonly<{ className?: string }>) {
   return (
     <svg
       className={className}
       viewBox="0 0 24 24"
       fill="none"
-      role="img"
-      aria-label="Network route"
+      aria-hidden="true"
     >
       <path
         d="M8.3 6.8H15.7L19.4 12L15.7 17.2H8.3L4.6 12Z"
@@ -52,7 +51,7 @@ function NetworkMark({ className = "" }: { className?: string }) {
   );
 }
 
-function TunnelSubmitMark({ className = "" }: { className?: string }) {
+function TunnelSubmitMark({ className = "" }: Readonly<{ className?: string }>) {
   return (
     <svg
       className={`submit-globe-mark ${className}`}
@@ -82,7 +81,7 @@ function upsertHop(hops: HopResult[], next: HopResult) {
 
 function storedTheme(): ThemeMode {
   try {
-    return window.localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark";
+    return globalThis.localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark";
   } catch {
     return "dark";
   }
@@ -90,7 +89,7 @@ function storedTheme(): ThemeMode {
 
 function persistTheme(theme: ThemeMode) {
   try {
-    window.localStorage.setItem(themeStorageKey, theme);
+    globalThis.localStorage.setItem(themeStorageKey, theme);
   } catch {
     // Keep the UI usable when storage is disabled by the browser.
   }
@@ -130,7 +129,7 @@ export function App() {
   const [theme, setTheme] = useState<ThemeMode>(storedTheme);
   const closeEventsRef = useRef<(() => void) | undefined>();
   const journeyStartedAtRef = useRef(0);
-  const journeyReleaseTimerRef = useRef<number | undefined>();
+  const journeyReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>();
 
   useEffect(() => {
     persistTheme(theme);
@@ -141,7 +140,7 @@ export function App() {
       closeEventsRef.current?.();
 
       if (journeyReleaseTimerRef.current !== undefined) {
-        window.clearTimeout(journeyReleaseTimerRef.current);
+        globalThis.clearTimeout(journeyReleaseTimerRef.current);
       }
     },
     []
@@ -188,13 +187,13 @@ export function App() {
 
   function releaseJourneyAfterMinimum() {
     if (journeyReleaseTimerRef.current !== undefined) {
-      window.clearTimeout(journeyReleaseTimerRef.current);
+      globalThis.clearTimeout(journeyReleaseTimerRef.current);
     }
 
-    const elapsed = window.performance.now() - journeyStartedAtRef.current;
+    const elapsed = globalThis.performance.now() - journeyStartedAtRef.current;
     const delay = Math.max(0, minimumJourneyDurationMs - elapsed);
 
-    journeyReleaseTimerRef.current = window.setTimeout(() => {
+    journeyReleaseTimerRef.current = globalThis.setTimeout(() => {
       setIsJourneyLaunching(false);
       journeyReleaseTimerRef.current = undefined;
     }, delay);
@@ -209,14 +208,14 @@ export function App() {
     closeEventsRef.current?.();
 
     if (journeyReleaseTimerRef.current !== undefined) {
-      window.clearTimeout(journeyReleaseTimerRef.current);
+      globalThis.clearTimeout(journeyReleaseTimerRef.current);
       journeyReleaseTimerRef.current = undefined;
     }
 
     setError(undefined);
     setHasSearched(true);
     setIsJourneyLaunching(true);
-    journeyStartedAtRef.current = window.performance.now();
+    journeyStartedAtRef.current = globalThis.performance.now();
     setResultView("map");
     setStatus("starting");
     setHops([]);
@@ -241,10 +240,10 @@ export function App() {
           setStatus((current) => (current === "finished" ? current : "error"));
         }
       );
-    } catch (caught) {
+    } catch (error_) {
       setStatus("error");
       releaseJourneyAfterMinimum();
-      setError(caught instanceof Error ? caught.message : "Unable to start measurement.");
+      setError(error_ instanceof Error ? error_.message : "Unable to start measurement.");
     }
   }
 
@@ -253,7 +252,7 @@ export function App() {
     closeEventsRef.current = undefined;
 
     if (journeyReleaseTimerRef.current !== undefined) {
-      window.clearTimeout(journeyReleaseTimerRef.current);
+      globalThis.clearTimeout(journeyReleaseTimerRef.current);
       journeyReleaseTimerRef.current = undefined;
     }
 
@@ -404,12 +403,12 @@ function JourneyLaunchStage({
   mode,
   sourceLabel,
   target
-}: {
+}: Readonly<{
   hopCount: number;
   mode: TraceMode;
   sourceLabel?: string;
   target: string;
-}) {
+}>) {
   const sourceCopy =
     sourceLabel && sourceLabel !== "nearby network probe"
       ? `Measured from ${sourceLabel} probe`
@@ -433,7 +432,7 @@ function JourneyLaunchStage({
   );
 }
 
-interface SearchFormProps {
+type SearchFormProps = Readonly<{
   target: string;
   mode: TraceMode;
   disabled: boolean;
@@ -442,7 +441,7 @@ interface SearchFormProps {
   onTargetChange: (value: string) => void;
   onModeChange: (mode: TraceMode) => void;
   onSubmit: () => void;
-}
+}>;
 
 function SearchForm({
   target,
@@ -453,7 +452,7 @@ function SearchForm({
   onTargetChange,
   onModeChange,
   onSubmit
-}: SearchFormProps) {
+}: Readonly<SearchFormProps>) {
   const [isInputFocused, setIsInputFocused] = useState(false);
   const canSubmit = target.trim().length > 0 && !disabled;
 
@@ -470,8 +469,6 @@ function SearchForm({
           "theme-search-box flex items-center gap-3 rounded-full border shadow-2xl shadow-black/25 backdrop-blur-xl transition",
           compact ? "h-12 px-4" : "h-16 px-5"
         ].join(" ")}
-        onMouseDown={() => setIsInputFocused(true)}
-        onTouchStart={() => setIsInputFocused(true)}
       >
         <span
           className={compact ? "h-9 w-9 shrink-0" : "h-10 w-10 shrink-0 sm:h-11 sm:w-11"}
@@ -527,10 +524,10 @@ function SearchForm({
 function ThemeToggle({
   theme,
   onChange
-}: {
+}: Readonly<{
   theme: ThemeMode;
   onChange: (theme: ThemeMode) => void;
-}) {
+}>) {
   return (
     <div className="theme-toggle fixed bottom-5 right-5 z-50 grid grid-cols-2 rounded-full border p-1 shadow-2xl backdrop-blur">
       <button

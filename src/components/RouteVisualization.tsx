@@ -3,14 +3,14 @@ import L from "leaflet";
 import { Activity, RadioTower } from "lucide-react";
 import type { HopResult, MeasurementSource, MeasurementStatus, TraceMode } from "../../shared/types";
 
-interface RouteVisualizationProps {
+type RouteVisualizationProps = Readonly<{
   mode: TraceMode;
   status: MeasurementStatus;
   target: string;
   hops: HopResult[];
   source?: MeasurementSource;
   theme: "light" | "dark";
-}
+}>;
 
 interface GeoPoint {
   lat: number;
@@ -115,16 +115,30 @@ function formatHopNumberLabel(hops: HopResult[]) {
   return `${hopNumbers.length > 1 ? "Mapped hops" : "Mapped hop"} ${ranges.join(", ")}`;
 }
 
+function markerRoleLabel(role: GeoPoint["role"]) {
+  if (role === "source") {
+    return "SRC";
+  }
+
+  if (role === "target") {
+    return "DST";
+  }
+
+  return undefined;
+}
+
 function formatMetricLabel(hop?: HopResult) {
   if (!hop) {
     return undefined;
   }
 
-  const metrics = [
-    typeof hop.rttMs === "number" ? `${Math.round(hop.rttMs)} ms avg` : undefined,
+  const packetLoss =
     typeof hop.packetLossPercent === "number" && hop.packetLossPercent > 0
       ? `${hop.packetLossPercent.toFixed(hop.packetLossPercent % 1 === 0 ? 0 : 1)}% loss`
-      : undefined,
+      : undefined;
+  const metrics = [
+    typeof hop.rttMs === "number" ? `${Math.round(hop.rttMs)} ms avg` : undefined,
+    packetLoss,
     hop.status !== "ok" ? hop.status : undefined
   ].filter(Boolean);
 
@@ -428,7 +442,7 @@ function groupHopsByAsPlace(params: {
     const groupCountry = place?.country ?? metadata?.country ?? "unknown";
     const groupLocationKey = place?.key ?? groupCountry;
     const groupKey = `${asn}:${groupLocationKey}`;
-    const previous = groups[groups.length - 1];
+    const previous = groups.at(-1);
     const previousCountry = previous?.place?.country ?? previous?.asCountry ?? "unknown";
     const previousLocationKey = previous?.place?.key ?? previousCountry;
     const previousKey = previous ? `${previous.asn}:${previousLocationKey}` : undefined;
@@ -486,7 +500,7 @@ function mergeRepeatedRouteGroups(groups: AsRouteGroup[]) {
 
   groups.forEach((group) => {
     const key = routeGroupKey(group);
-    const existing = mergedGroups[mergedGroups.length - 1];
+    const existing = mergedGroups.at(-1);
 
     if (!existing || routeGroupKey(existing) !== key) {
       const groupCopy = {
@@ -605,6 +619,10 @@ function targetGeoHopFromHops(hops: HopResult[]) {
   return [...hops].reverse().find((hop) => placeFromCountryHop(hop));
 }
 
+function lastHopForGroup(group: AsRouteGroup | undefined, hops: HopResult[], index: number) {
+  return group?.hops.at(-1) ?? hops[Math.min(index, hops.length - 1)];
+}
+
 function targetPlaceFromHops(target: string, hops: HopResult[]): RoutePlace | undefined {
   const targetHop = targetGeoHopFromHops(hops);
   const place = targetHop ? placeFromCountryHop(targetHop) : undefined;
@@ -660,7 +678,7 @@ function buildRoutePoints(params: {
 
   Array.from({ length: effectiveTransitCount }, (_value, index) => {
     const group = asGroups[index];
-    const hop = group?.hops[group.hops.length - 1] ?? params.hops[Math.min(index, params.hops.length - 1)];
+    const hop = lastHopForGroup(group, params.hops, index);
     const hopCount = group?.hops.length ?? 1;
     const asn = group?.asn ?? hop?.asn ?? "AS???";
     const metadata = asMetadata(asn);
@@ -706,40 +724,75 @@ function buildRoutePoints(params: {
   }));
 }
 
+function appendTowerIcon(parent: HTMLElement) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "packet-map-marker__tower");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+
+  const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  circle.setAttribute("cx", "12");
+  circle.setAttribute("cy", "8.8");
+  circle.setAttribute("r", "1.35");
+  svg.append(circle);
+
+  [
+    "M12 10.2V20",
+    "M8.2 20H15.8",
+    "M8.9 17.1L12 10.8L15.1 17.1",
+    "M7.9 12.5C7.2 11.4 6.9 10.2 6.9 8.8C6.9 7.5 7.2 6.3 7.9 5.2",
+    "M16.1 12.5C16.8 11.4 17.1 10.2 17.1 8.8C17.1 7.5 16.8 6.3 16.1 5.2",
+    "M5.2 14.2C4.2 12.5 3.7 10.7 3.7 8.8C3.7 6.9 4.2 5.1 5.2 3.5",
+    "M18.8 14.2C19.8 12.5 20.3 10.7 20.3 8.8C20.3 6.9 19.8 5.1 18.8 3.5"
+  ].forEach((pathData) => {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathData);
+    svg.append(path);
+  });
+
+  parent.append(svg);
+}
+
+function markerElement(point: GeoPoint, color: string, visualSize: number) {
+  const marker = document.createElement("span");
+  marker.className = `packet-map-marker packet-map-marker--${point.role}`;
+  marker.style.setProperty("--marker-color", color);
+  marker.style.setProperty("--marker-visual-size", `${visualSize}px`);
+
+  ["halo", "ring", "dot"].forEach((part) => {
+    const child = document.createElement("span");
+    child.className = `packet-map-marker__${part}`;
+    marker.append(child);
+  });
+
+  if (point.role === "transit") {
+    appendTowerIcon(marker);
+  }
+
+  const label = markerRoleLabel(point.role);
+
+  if (label) {
+    const labelElement = document.createElement("span");
+    labelElement.className = "packet-map-marker__label";
+    labelElement.textContent = label;
+    marker.append(labelElement);
+  }
+
+  return marker;
+}
+
 function markerIcon(point: GeoPoint) {
   const color = markerColor(point.status);
   const visualSize = point.role === "transit" ? 30 : 72;
   const hitSize = point.role === "transit" ? 30 : 24;
   const anchorX = hitSize / 2;
   const anchorY = hitSize / 2;
-  const label = point.role === "source" ? "SRC" : point.role === "target" ? "DST" : "";
-  const towerIcon =
-    point.role === "transit"
-      ? `<svg class="packet-map-marker__tower" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="8.8" r="1.35" />
-          <path d="M12 10.2V20" />
-          <path d="M8.2 20H15.8" />
-          <path d="M8.9 17.1L12 10.8L15.1 17.1" />
-          <path d="M7.9 12.5C7.2 11.4 6.9 10.2 6.9 8.8C6.9 7.5 7.2 6.3 7.9 5.2" />
-          <path d="M16.1 12.5C16.8 11.4 17.1 10.2 17.1 8.8C17.1 7.5 16.8 6.3 16.1 5.2" />
-          <path d="M5.2 14.2C4.2 12.5 3.7 10.7 3.7 8.8C3.7 6.9 4.2 5.1 5.2 3.5" />
-          <path d="M18.8 14.2C19.8 12.5 20.3 10.7 20.3 8.8C20.3 6.9 19.8 5.1 18.8 3.5" />
-        </svg>`
-      : "";
 
   return L.divIcon({
     className: `packet-map-marker-wrapper packet-map-marker-wrapper--${point.role}`,
     iconSize: [hitSize, hitSize],
     iconAnchor: [anchorX, anchorY],
-    html: `
-        <span class="packet-map-marker packet-map-marker--${point.role}" style="--marker-color:${color};--marker-visual-size:${visualSize}px">
-          <span class="packet-map-marker__halo"></span>
-          <span class="packet-map-marker__ring"></span>
-          <span class="packet-map-marker__dot"></span>
-          ${towerIcon}
-          ${label ? `<span class="packet-map-marker__label">${label}</span>` : ""}
-        </span>
-    `
+    html: markerElement(point, color, visualSize)
   });
 }
 
@@ -804,17 +857,19 @@ function scheduleRouteFit(params: {
   routeSpan: number;
   routeViewKey: string;
 }) {
-  let fitTimeout = 0;
-  const fitFrame = window.requestAnimationFrame(() => {
+  let fitTimeout: ReturnType<typeof setTimeout> | undefined;
+  const fitFrame = globalThis.requestAnimationFrame(() => {
     fitRouteToBounds({ ...params, animate: true, markFitted: true });
-    fitTimeout = window.setTimeout(() => {
+    fitTimeout = globalThis.setTimeout(() => {
       fitRouteToBounds({ ...params, animate: true, markFitted: true });
     }, 180);
   });
 
   return () => {
-    window.cancelAnimationFrame(fitFrame);
-    window.clearTimeout(fitTimeout);
+    globalThis.cancelAnimationFrame(fitFrame);
+    if (fitTimeout !== undefined) {
+      globalThis.clearTimeout(fitTimeout);
+    }
   };
 }
 
@@ -824,13 +879,13 @@ function scheduleSinglePointFit(params: {
   map: L.Map;
   routeViewKey: string;
 }) {
-  const frame = window.requestAnimationFrame(() => {
+  const frame = globalThis.requestAnimationFrame(() => {
     params.map.invalidateSize({ animate: false, pan: false });
     params.map.setView(params.latLng ?? L.latLng(24, 20), 3, { animate: true });
     params.fittedRouteKeyRef.current = params.routeViewKey;
   });
 
-  return () => window.cancelAnimationFrame(frame);
+  return () => globalThis.cancelAnimationFrame(frame);
 }
 
 function addRouteLines(params: {
@@ -878,7 +933,7 @@ function setMinimumZoom(map: L.Map, width: number) {
 }
 
 function observeRouteResize(container: HTMLDivElement, map: L.Map) {
-  let resizeTimeout = 0;
+  let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
   let observedSize = {
     height: container.clientHeight,
     width: container.clientWidth
@@ -910,8 +965,10 @@ function observeRouteResize(container: HTMLDivElement, map: L.Map) {
     };
 
     setMinimumZoom(map, nextSize.width);
-    window.clearTimeout(resizeTimeout);
-    resizeTimeout = window.setTimeout(() => {
+    if (resizeTimeout !== undefined) {
+      globalThis.clearTimeout(resizeTimeout);
+    }
+    resizeTimeout = globalThis.setTimeout(() => {
       map.invalidateSize({ animate: false, pan: false });
     }, 140);
   });
@@ -919,7 +976,9 @@ function observeRouteResize(container: HTMLDivElement, map: L.Map) {
   resizeObserver.observe(container);
 
   return () => {
-    window.clearTimeout(resizeTimeout);
+    if (resizeTimeout !== undefined) {
+      globalThis.clearTimeout(resizeTimeout);
+    }
     resizeObserver.disconnect();
   };
 }
@@ -934,10 +993,19 @@ function tooltipHtml(point: GeoPoint) {
 
 function addRouteMarkers(layer: L.LayerGroup, routePoints: GeoPoint[]) {
   routePoints.forEach((point) => {
+    const baseZIndex = 100 + (point.sequence ?? 0);
+    let zIndexOffset = baseZIndex;
+
+    if (point.role === "target") {
+      zIndexOffset = 900;
+    } else if (point.role === "source") {
+      zIndexOffset = 800;
+    }
+
     const marker = L.marker([point.lat, point.lng], {
       icon: markerIcon(point),
       keyboard: false,
-      zIndexOffset: point.role === "target" ? 900 : point.role === "source" ? 800 : 100 + (point.sequence ?? 0)
+      zIndexOffset
     }).addTo(layer);
 
     marker.bindTooltip(tooltipHtml(point), {
@@ -1047,7 +1115,7 @@ export function RouteVisualization({ mode, status, target, hops, source, theme }
       map.setView(FLAT_MAP_CENTER, map.getMinZoom(), { animate: false });
       map.stop();
 
-      window.setTimeout(() => {
+      globalThis.setTimeout(() => {
         isApplyingMinimumView = false;
       }, 0);
     };

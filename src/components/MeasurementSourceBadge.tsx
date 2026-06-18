@@ -1,10 +1,10 @@
 import { MapPinned, RadioTower } from "lucide-react";
 import type { MeasurementSource, MeasurementStatus } from "../../shared/types";
 
-interface MeasurementSourceBadgeProps {
+type MeasurementSourceBadgeProps = Readonly<{
   source?: MeasurementSource;
   status: MeasurementStatus;
-}
+}>;
 
 export function MeasurementSourceBadge({ source, status }: MeasurementSourceBadgeProps) {
   const location = [source?.city, source?.country].filter(Boolean).join(", ");

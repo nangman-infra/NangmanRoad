@@ -1,11 +1,11 @@
 import { AlertTriangle, CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import type { MeasurementStatus } from "../../shared/types";
 
-interface StatusMessageProps {
+type StatusMessageProps = Readonly<{
   status: MeasurementStatus;
   error?: string;
   hopCount: number;
-}
+}>;
 
 export function StatusMessage({ status, error, hopCount }: StatusMessageProps) {
   if (error) {

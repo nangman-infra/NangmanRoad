@@ -1,10 +1,10 @@
 import { Globe2 } from "lucide-react";
 
-interface TargetInputProps {
+type TargetInputProps = Readonly<{
   value: string;
   disabled: boolean;
   onChange: (value: string) => void;
-}
+}>;
 
 export function TargetInput({ value, disabled, onChange }: TargetInputProps) {
   return (

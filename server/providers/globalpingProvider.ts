@@ -70,7 +70,7 @@ function headers() {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function finiteNumber(value: unknown): number | undefined {
@@ -167,7 +167,7 @@ function isPrivateIp(ip?: string) {
     return false;
   }
 
-  const octets = ip.split(".").map((part) => Number(part));
+  const octets = ip.split(".").map(Number);
 
   if (octets.length !== 4 || !octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)) {
     return false;
@@ -285,15 +285,16 @@ function getHopLocation(entry: unknown) {
 }
 
 function getRttMs(entry: unknown): number | undefined {
-  if (!entry || typeof entry !== "object") {
+  const value = asRecord(entry);
+
+  if (!value) {
     return undefined;
   }
 
-  const value = entry as Record<string, unknown>;
-  const stats = value.stats as Record<string, unknown> | undefined;
+  const stats = asRecord(value.stats);
   const timings = Array.isArray(value.timings) ? value.timings : [];
   const timingRtts = timings
-    .map((timing) => (timing as Record<string, unknown>).rtt)
+    .map((timing) => asRecord(timing)?.rtt)
     .filter((rtt): rtt is number => typeof rtt === "number" && Number.isFinite(rtt));
   const timingAverage =
     timingRtts.length > 0
@@ -326,6 +327,30 @@ function resultRecord(payload: unknown) {
   }
 
   return asRecord(outer.result) ?? outer;
+}
+
+function statsJitterMs(stats?: Record<string, unknown>) {
+  if (typeof stats?.jAvg === "number") {
+    return Math.round(stats.jAvg);
+  }
+
+  if (typeof stats?.stDev === "number") {
+    return Math.round(stats.stDev);
+  }
+
+  return pickNumber(stats, ["jitter", "jitterAvg", "stdev", "stddev"]);
+}
+
+function packetLossFromResult(value: Record<string, unknown>) {
+  if (typeof value.loss === "number") {
+    return value.loss;
+  }
+
+  if (typeof value.packetLoss === "number") {
+    return value.packetLoss;
+  }
+
+  return undefined;
 }
 
 function resultFailureMessage(payload: unknown) {
@@ -464,27 +489,22 @@ export function parseRawTraceroute(raw: string): HopResult[] {
     .filter((hop): hop is HopResult => Boolean(hop));
 }
 
-function parseResultHops(payload: unknown): HopResult[] {
-  const outer = payload as Record<string, unknown>;
+export function parseResultHops(payload: unknown): HopResult[] {
+  const outer = asRecord(payload) ?? {};
   const result = resultRecord(payload) ?? outer;
   const rawOutput = result.rawOutput;
   const structuredHops = result.hops;
 
   if (Array.isArray(structuredHops) && structuredHops.length > 0) {
     return structuredHops.map((entry, index) => {
-      const value = entry as Record<string, unknown>;
-      const stats = value.stats as Record<string, unknown> | undefined;
+      const value = asRecord(entry) ?? {};
+      const stats = asRecord(value.stats);
       const ip = pickString(value, ["resolvedAddress", "ip", "address"]);
       const hostname = pickString(value, ["resolvedHostname", "hostname", "host", "name"]);
       const location = getHopLocation(value);
       const rttMs = getRttMs(value);
       const loss = finiteNumber(stats?.loss);
-      const jitterMs =
-        typeof stats?.jAvg === "number"
-          ? Math.round(stats.jAvg)
-          : typeof stats?.stDev === "number"
-            ? Math.round(stats.stDev)
-            : pickNumber(stats, ["jitter", "jitterAvg", "stdev", "stddev"]);
+      const jitterMs = statsJitterMs(stats);
 
       return {
         hopNumber: index + 1,
@@ -510,17 +530,12 @@ function parseResultHops(payload: unknown): HopResult[] {
 
   if (Array.isArray(result.result)) {
     return result.result.map((entry, index) => {
-      const value = entry as Record<string, unknown>;
+      const value = asRecord(entry) ?? {};
       const ip = pickString(value, ["ip", "resolvedAddress", "address"]);
       const hostname = pickString(value, ["hostname", "resolvedHostname", "host", "name"]);
       const location = getHopLocation(value);
       const rttMs = getRttMs(value);
-      const loss =
-        typeof value.loss === "number"
-          ? value.loss
-          : typeof value.packetLoss === "number"
-            ? value.packetLoss
-            : undefined;
+      const loss = packetLossFromResult(value);
 
       return {
         hopNumber: typeof value.hop === "number" ? value.hop : index + 1,
@@ -556,8 +571,8 @@ function parseResultHops(payload: unknown): HopResult[] {
 }
 
 function extractSource(payload: unknown) {
-  const value = payload as Record<string, unknown>;
-  const probe = value.probe as Record<string, unknown> | undefined;
+  const value = asRecord(payload) ?? {};
+  const probe = asRecord(value.probe);
 
   return {
     provider: "globalping" as const,

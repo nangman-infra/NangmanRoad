@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { JourneyState, ThemeMode } from "./AppShell";
 
-interface NetworkMotionBackgroundProps {
+type NetworkMotionBackgroundProps = Readonly<{
   journeyState: JourneyState;
   theme: ThemeMode;
-}
+}>;
 
 interface NetworkNode {
   x: number;
@@ -137,7 +137,7 @@ function getSphereRingPosition(index: number, width: number, height: number): Sp
 
   return {
     ringIndex: ringCounts.length - 1,
-    ringCount: ringCounts[ringCounts.length - 1],
+    ringCount: ringCounts.at(-1) ?? 0,
     ringTotal: ringCounts.length,
     localIndex: 0
   };
@@ -342,7 +342,7 @@ function nodeColor(node: NetworkNode, palette: MotionPalette) {
     return palette.violet;
   }
 
-  return node.accent > 0.72 ? palette.node : palette.line;
+  return palette.node;
 }
 
 function formedNodeAlpha(params: { accent: boolean; formedBoost: number; pulse: number; theme: ThemeMode }) {
@@ -510,6 +510,33 @@ function formationPoint(index: number, width: number, height: number, time: numb
   };
 }
 
+function targetMotion(state: JourneyState): MotionState {
+  if (state === "launch") {
+    return {
+      speed: 0.94,
+      linkBoost: 1,
+      drift: 1,
+      sceneOpacity: 1
+    };
+  }
+
+  if (state === "settled") {
+    return {
+      speed: 0.78,
+      linkBoost: 0.28,
+      drift: 1,
+      sceneOpacity: 0.1
+    };
+  }
+
+  return {
+    speed: 1,
+    linkBoost: 0,
+    drift: 0,
+    sceneOpacity: 1
+  };
+}
+
 export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const journeyStateRef = useRef<JourneyState>(journeyState);
@@ -554,7 +581,7 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
 
     function resize() {
       const bounds = canvasElement.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
       const previousWidth = width;
       const previousHeight = height;
       const nextWidth = bounds.width;
@@ -839,16 +866,13 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
       const deltaSeconds = lastTimeStamp === 0 ? 0.016 : Math.min(currentTime - lastTimeStamp, 0.05);
       const delta = deltaSeconds * 60;
       const state = journeyStateRef.current;
-      const targetSpeed = state === "launch" ? 0.94 : state === "settled" ? 0.78 : 1;
-      const targetLinkBoost = state === "launch" ? 1 : state === "settled" ? 0.28 : 0;
-      const targetDrift = state === "idle" ? 0 : 1;
-      const targetSceneOpacity = state === "settled" ? 0.1 : 1;
+      const target = targetMotion(state);
 
       lastTimeStamp = currentTime;
-      motion.speed = mix(motion.speed, targetSpeed, Math.min(1, deltaSeconds * 3.2));
-      motion.linkBoost = mix(motion.linkBoost, targetLinkBoost, Math.min(1, deltaSeconds * 3.4));
-      motion.drift = mix(motion.drift, targetDrift, Math.min(1, deltaSeconds * 0.62));
-      motion.sceneOpacity = mix(motion.sceneOpacity, targetSceneOpacity, Math.min(1, deltaSeconds * 4.2));
+      motion.speed = mix(motion.speed, target.speed, Math.min(1, deltaSeconds * 3.2));
+      motion.linkBoost = mix(motion.linkBoost, target.linkBoost, Math.min(1, deltaSeconds * 3.4));
+      motion.drift = mix(motion.drift, target.drift, Math.min(1, deltaSeconds * 0.62));
+      motion.sceneOpacity = mix(motion.sceneOpacity, target.sceneOpacity, Math.min(1, deltaSeconds * 4.2));
 
       ctx.clearRect(0, 0, width, height);
       drawBackground();
@@ -861,15 +885,15 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
 
     resize();
     rafId = requestAnimationFrame(draw);
-    window.addEventListener("resize", resize);
-    window.addEventListener("mousemove", updatePointer);
-    window.addEventListener("mouseleave", leavePointer);
+    globalThis.addEventListener("resize", resize);
+    globalThis.addEventListener("mousemove", updatePointer);
+    globalThis.addEventListener("mouseleave", leavePointer);
 
     return () => {
       cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("mousemove", updatePointer);
-      window.removeEventListener("mouseleave", leavePointer);
+      globalThis.removeEventListener("resize", resize);
+      globalThis.removeEventListener("mousemove", updatePointer);
+      globalThis.removeEventListener("mouseleave", leavePointer);
     };
   }, []);
 

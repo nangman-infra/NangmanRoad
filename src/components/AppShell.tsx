@@ -8,11 +8,11 @@ export function AppShell({
   children,
   journeyState = "idle",
   theme
-}: {
+}: Readonly<{
   children: ReactNode;
   journeyState?: JourneyState;
   theme: ThemeMode;
-}) {
+}>) {
   return (
     <div className={`app-shell theme-${theme} relative min-h-screen overflow-hidden`}>
       <NetworkMotionBackground journeyState={journeyState} theme={theme} />

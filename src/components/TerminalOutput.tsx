@@ -8,14 +8,14 @@ import type {
 
 const MTR_REPORT_CYCLES = 16;
 
-interface TerminalOutputProps {
+type TerminalOutputProps = Readonly<{
   error?: string;
   hops: HopResult[];
   mode: TraceMode;
   result?: MeasurementResult;
   status: MeasurementStatus;
   target: string;
-}
+}>;
 
 function formatRtt(value?: number) {
   return typeof value === "number" ? `${Math.round(value)} ms` : "*";
@@ -105,7 +105,7 @@ function traceoutLines(hops: HopResult[], hasResult: boolean, error?: string) {
   return hasResult ? hops.map((hop) => traceoutLine(hop)) : [emptyOutputLine(error)];
 }
 
-function TerminalCommandBlock({ lines }: { lines: string[] }) {
+function TerminalCommandBlock({ lines }: Readonly<{ lines: string[] }>) {
   return (
     <div className="terminal-command-block">
       {lines.map((line) => (
@@ -115,7 +115,7 @@ function TerminalCommandBlock({ lines }: { lines: string[] }) {
   );
 }
 
-function MtrTable({ hops }: { hops: HopResult[] }) {
+function MtrTable({ hops }: Readonly<{ hops: HopResult[] }>) {
   return (
     <div className="terminal-mtr-table" role="table" aria-label="MTR result">
       <div className="terminal-mtr-row terminal-mtr-row--header" role="row">

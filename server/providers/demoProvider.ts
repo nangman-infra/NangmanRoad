@@ -51,6 +51,18 @@ function demoTargetIp(target: string) {
   return target === "1.1.1.1" ? "1.1.1.1" : "192.0.2.80";
 }
 
+function demoBaseLatency(target: string) {
+  if (target === "1.1.1.1") {
+    return 13;
+  }
+
+  if (target.includes("google")) {
+    return 22;
+  }
+
+  return 31;
+}
+
 function demoHop(params: {
   asn: string;
   city?: string;
@@ -81,7 +93,7 @@ function demoHop(params: {
 
 function buildDemoHops(target: string, mode: TraceMode, visitor?: VisitorContext): HopResult[] {
   const origin = guessCountry(visitor);
-  const base = target === "1.1.1.1" ? 13 : target.includes("google") ? 22 : 31;
+  const base = demoBaseLatency(target);
   const source = sourceEstimate(origin);
 
   return [

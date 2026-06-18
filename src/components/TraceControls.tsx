@@ -1,12 +1,12 @@
 import { RotateCcw, Square, Zap } from "lucide-react";
 import type { MeasurementStatus } from "../../shared/types";
 
-interface TraceControlsProps {
+type TraceControlsProps = Readonly<{
   status: MeasurementStatus;
   onStart: () => void;
   onStop: () => void;
   onReset: () => void;
-}
+}>;
 
 export function TraceControls({ status, onStart, onStop, onReset }: TraceControlsProps) {
   const isBusy = status === "starting" || status === "running";

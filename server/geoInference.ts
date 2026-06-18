@@ -212,7 +212,7 @@ function finite(value: unknown): number | undefined {
 }
 
 function ipv4Octets(ip: string) {
-  const octets = ip.split(".").map((part) => Number(part));
+  const octets = ip.split(".").map(Number);
 
   return octets.length === 4 && octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
     ? octets
@@ -386,7 +386,7 @@ async function fetchIpInfo(ip: string): Promise<IpGeoRecord | undefined> {
     }
 
     const data = (await response.json()) as Record<string, unknown>;
-    const loc = typeof data.loc === "string" ? data.loc.split(",").map((part) => Number(part)) : [];
+    const loc = typeof data.loc === "string" ? data.loc.split(",").map(Number) : [];
     const org = typeof data.org === "string" ? data.org : undefined;
 
     return {
@@ -403,6 +403,18 @@ async function fetchIpInfo(ip: string): Promise<IpGeoRecord | undefined> {
   } finally {
     timer.done();
   }
+}
+
+function countryFromIpApi(data: Record<string, unknown>) {
+  if (typeof data.countryCode === "string") {
+    return data.countryCode;
+  }
+
+  if (typeof data.country === "string") {
+    return data.country;
+  }
+
+  return undefined;
 }
 
 async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
@@ -441,7 +453,7 @@ async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
       asn: normalizeAsn(asText),
       asName: typeof data.asname === "string" ? data.asname : stripAsPrefix(asText),
       city: typeof data.city === "string" ? data.city : undefined,
-      country: typeof data.countryCode === "string" ? data.countryCode : typeof data.country === "string" ? data.country : undefined,
+      country: countryFromIpApi(data),
       hostname: typeof data.reverse === "string" ? data.reverse : undefined,
       latitude: finite(data.lat),
       longitude: finite(data.lon)
@@ -766,7 +778,11 @@ function rttSupportScore(candidate: GeoCandidate, source?: GeoPoint, rttMs?: num
 }
 
 function candidateScore(candidate: GeoCandidate, candidates: GeoCandidate[], source?: GeoPoint, rttMs?: number) {
-  const confidenceScore = candidate.confidence === "high" ? 30 : candidate.confidence === "medium" ? 20 : 10;
+  const confidenceScore: Record<Confidence, number> = {
+    high: 30,
+    medium: 20,
+    low: 10
+  };
   const sourceScore: Record<GeoSource, number> = {
     combined: 18,
     reverse_dns: 14,
@@ -774,7 +790,7 @@ function candidateScore(candidate: GeoCandidate, candidates: GeoCandidate[], sou
     geoip: 8
   };
 
-  return confidenceScore + sourceScore[candidate.source] + evidenceAgreementScore(candidate, candidates) + rttSupportScore(candidate, source, rttMs);
+  return confidenceScore[candidate.confidence] + sourceScore[candidate.source] + evidenceAgreementScore(candidate, candidates) + rttSupportScore(candidate, source, rttMs);
 }
 
 function chooseCandidate(candidates: GeoCandidate[], source?: GeoPoint, rttMs?: number): GeoCandidate | undefined {

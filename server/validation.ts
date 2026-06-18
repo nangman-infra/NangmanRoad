@@ -51,7 +51,7 @@ function isReservedDomain(target: string) {
 }
 
 function ipv4ToNumber(ip: string) {
-  const octets = ip.split(".").map((part) => Number(part));
+  const octets = ip.split(".").map(Number);
 
   if (octets.length !== 4 || !octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)) {
     return undefined;

@@ -99,14 +99,11 @@ body {
   --map-border: rgba(15, 23, 42, 0.12);
   --map-caption-bg: rgba(255, 255, 255, 0.82);
   --map-vignette: radial-gradient(circle at center, transparent 42%, rgba(255, 255, 255, 0.28) 100%);
+  color-scheme: light;
 }
 
 .theme-dark {
   color-scheme: dark;
-}
-
-.theme-light {
-  color-scheme: light;
 }
 
 .top-sheen {
@@ -615,7 +612,7 @@ body {
 }
 
 .terminal-eyebrow {
-  color: rgba(207, 241, 250, 0.56);
+  color: rgba(207, 241, 250, 0.72);
 }
 
 .terminal-source {
@@ -748,18 +745,18 @@ body {
 }
 
 .theme-light .terminal-eyebrow {
-  color: rgba(31, 41, 55, 0.46);
+  color: rgba(31, 41, 55, 0.68);
 }
 
 .theme-light .terminal-source,
 .theme-light .terminal-output {
-  color: rgba(17, 24, 39, 0.74);
+  color: rgba(17, 24, 39, 0.82);
   text-shadow: none;
   scrollbar-color: rgba(37, 99, 235, 0.38) rgba(15, 23, 42, 0.08);
 }
 
 .theme-light .terminal-mtr-row--header {
-  color: rgba(31, 41, 55, 0.58);
+  color: rgba(31, 41, 55, 0.72);
 }
 
 .theme-light .terminal-scrollbar::-webkit-scrollbar-track {
@@ -956,7 +953,7 @@ input:focus-visible {
 .leaflet-control-attribution {
   border-radius: 6px 0 0 0;
   background: rgba(5, 8, 18, 0.72) !important;
-  color: rgba(220, 245, 255, 0.58) !important;
+  color: rgba(220, 245, 255, 0.78) !important;
   backdrop-filter: blur(10px);
 }
 
@@ -1004,7 +1001,7 @@ input:focus-visible {
 }
 
 .theme-light .leaflet-control-zoom a {
-  color: rgba(31, 41, 55, 0.78) !important;
+  color: rgba(31, 41, 55, 0.86) !important;
 }
 
 .theme-light .leaflet-control-zoom a + a {

@@ -6,12 +6,12 @@ import type {
   TraceMode
 } from "../../shared/types";
 
-interface MetricsPanelProps {
+type MetricsPanelProps = Readonly<{
   result?: MeasurementResult;
   hops: HopResult[];
   mode: TraceMode;
   status: MeasurementStatus;
-}
+}>;
 
 function average(values: number[]) {
   if (values.length === 0) {
@@ -65,7 +65,7 @@ export function MetricsPanel({ result, hops, mode, status }: MetricsPanelProps) 
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="theme-inner-panel rounded-lg border p-3">
       <p className="theme-panel-eyebrow text-xs uppercase tracking-[0.16em]">{label}</p>

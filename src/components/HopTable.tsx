@@ -1,10 +1,10 @@
 import { CircleDot, Timer } from "lucide-react";
 import type { HopResult, MeasurementStatus } from "../../shared/types";
 
-interface HopTableProps {
+type HopTableProps = Readonly<{
   hops: HopResult[];
   status: MeasurementStatus;
-}
+}>;
 
 function statusClass(status: HopResult["status"]) {
   if (status === "loss" || status === "timeout") {
