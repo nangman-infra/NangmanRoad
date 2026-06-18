@@ -32,9 +32,9 @@ pipeline {
         HARBOR_PROJECT = 'library'
         HARBOR_CREDS_ID = 'NANGMAN_HARBOR_ROBOT_ACCOUNT'
         IMAGE_NAME = 'nangman-road'
-        WATCHTOWER_URL = 'http://172.16.0.15:18081'
+        WATCHTOWER_URL = 'http://172.16.0.37:18081'
         WATCHTOWER_TOKEN = credentials('nangman-personal-web-watchtower-token')
-        APP_HEALTH_URL = 'http://172.16.0.15:10004/api/health'
+        APP_HEALTH_URL = 'http://172.16.0.37:10004/api/health'
         DEPLOY_TIMEOUT_SECONDS = '180'
         SONARQUBE_INSTALLATION = 'sonarqube'
         SONAR_SCANNER_TOOL = 'SonarScanner'
@@ -80,11 +80,17 @@ pipeline {
 
                             env.FULL_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                             env.SHORT_SHA = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+                            env.EXACT_GIT_TAG = sh(
+                                script: 'git fetch --tags --force >/dev/null 2>&1 || true; git tag --points-at HEAD | head -n 1',
+                                returnStdout: true
+                            ).trim()
                             env.BUILD_TIMESTAMP = sh(script: 'date -u +%Y-%m-%dT%H:%M:%SZ', returnStdout: true).trim()
-                            env.IMAGE_TAG = "v${env.BUILD_NUMBER}"
                             env.IMAGE_REPO = "${env.HARBOR_URL}/${env.HARBOR_PROJECT}/${env.IMAGE_NAME}"
-                            env.IMAGE_VERSION = "${env.IMAGE_REPO}:${env.IMAGE_TAG}"
+                            env.IMAGE_VERSION = env.EXACT_GIT_TAG ?: "sha-${env.SHORT_SHA}"
+                            env.IMAGE_REF = "${env.IMAGE_REPO}:${env.IMAGE_VERSION}"
                             env.IMAGE_LATEST = "${env.IMAGE_REPO}:latest"
+                            env.IMAGE_SHA = "${env.IMAGE_REPO}:sha-${env.SHORT_SHA}"
+                            env.IMAGE_TAGGED = env.EXACT_GIT_TAG ? "${env.IMAGE_REPO}:${env.EXACT_GIT_TAG}" : ''
                             env.IMAGE_CACHE = "${env.IMAGE_REPO}:buildcache"
                             env.BUILD_REF = env.GIT_REF ?: MAIN_BRANCH_REF
                             env.REPO_HTTP_URL = env.REPO_URL?.trim() ? env.REPO_URL.trim() : DEFAULT_REPO_HTTP_URL
@@ -94,12 +100,13 @@ pipeline {
                             env.FAILURE_REASON = '초기화 단계에서 실패했습니다.'
 
                             currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.SHORT_SHA}"
-                            currentBuild.description = "main -> ${env.IMAGE_TAG} | ${env.IMAGE_NAME}"
+                            currentBuild.description = "main -> ${env.IMAGE_VERSION} | ${env.IMAGE_NAME}"
 
                             echo "Repository: ${env.REPO_HTTP_URL}"
                             echo "Branch ref: ${env.BUILD_REF}"
                             echo "Commit: ${env.FULL_SHA}"
                             echo "Image repository: ${env.IMAGE_REPO}"
+                            echo "Image tags: latest, sha-${env.SHORT_SHA}${env.EXACT_GIT_TAG ? ", ${env.EXACT_GIT_TAG}" : ''}"
                             echo "Health check URL: ${env.APP_HEALTH_URL}"
                         }
                     }
@@ -161,7 +168,7 @@ pipeline {
                                 text: """
                                     sonar.projectKey=${env.SONAR_PROJECT_KEY}
                                     sonar.projectName=${env.SONAR_PROJECT_NAME}
-                                    sonar.projectVersion=${env.IMAGE_TAG}
+                                    sonar.projectVersion=${env.IMAGE_VERSION}
                                     sonar.projectBaseDir=.
                                     sonar.sourceEncoding=UTF-8
                                     sonar.scm.revision=${env.FULL_SHA}
@@ -241,23 +248,31 @@ pipeline {
                                         script: "docker buildx imagetools inspect ${env.IMAGE_CACHE} >/dev/null 2>&1",
                                         returnStatus: true
                                     ) == 0 ? "--cache-from type=registry,ref=${env.IMAGE_CACHE}" : ""
+                                    def tagArgs = [
+                                        "--tag ${env.IMAGE_LATEST}",
+                                        "--tag ${env.IMAGE_SHA}"
+                                    ]
+                                    if (env.EXACT_GIT_TAG) {
+                                        tagArgs << "--tag ${env.IMAGE_TAGGED}"
+                                    }
+
                                     def buildArgs = [
                                         "--platform ${env.PLATFORMS}",
-                                        "--tag ${env.IMAGE_VERSION}",
-                                        "--tag ${env.IMAGE_LATEST}",
+                                    ] + tagArgs
+                                    if (cacheFromArg) {
+                                        buildArgs << cacheFromArg
+                                    }
+                                    buildArgs += [
                                         "--cache-to type=registry,ref=${env.IMAGE_CACHE},mode=max",
                                         "--label org.opencontainers.image.created=${env.BUILD_TIMESTAMP}",
                                         "--label org.opencontainers.image.revision=${env.FULL_SHA}",
                                         "--label org.opencontainers.image.source=${env.REPO_HTTP_URL}",
-                                        "--label org.opencontainers.image.version=${env.IMAGE_TAG}",
+                                        "--label org.opencontainers.image.version=${env.IMAGE_VERSION}",
                                         "--pull",
                                         "--push",
                                         "--progress=plain",
                                         "."
                                     ]
-                                    if (cacheFromArg) {
-                                        buildArgs.add(4, cacheFromArg)
-                                    }
 
                                     sh """
                                         docker buildx build \\
@@ -288,8 +303,18 @@ pipeline {
                             sh '''
                                 set -eu
                                 echo "$HARBOR_PASSWORD" | docker login "$HARBOR_URL" -u "$HARBOR_USERNAME" --password-stdin
-                                docker buildx imagetools inspect "$IMAGE_VERSION"
+
+                                echo "Inspecting latest manifest"
                                 docker buildx imagetools inspect "$IMAGE_LATEST"
+
+                                echo "Inspecting sha manifest"
+                                docker buildx imagetools inspect "$IMAGE_SHA"
+
+                                if [ -n "${IMAGE_TAGGED:-}" ]; then
+                                    echo "Inspecting git tag manifest"
+                                    docker buildx imagetools inspect "$IMAGE_TAGGED"
+                                fi
+
                                 docker logout "$HARBOR_URL"
                             '''
                         }
@@ -368,7 +393,7 @@ pipeline {
         success {
             mattermostSend(
                 color: 'good',
-                message: ":tada: Nangman Road 배포가 완료되었습니다.\n프로젝트: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n이미지: ${env.IMAGE_VERSION}\n바로가기: ${env.BUILD_URL}"
+                message: ":tada: Nangman Road 배포가 완료되었습니다.\n프로젝트: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n이미지: ${env.IMAGE_REF}\n바로가기: ${env.BUILD_URL}"
             )
         }
 
