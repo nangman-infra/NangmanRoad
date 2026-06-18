@@ -69,15 +69,6 @@ function markerColor(status: GeoPoint["status"]) {
   return "#5ee7ff";
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 function formatHopCount(count?: number) {
   if (!count || count <= 0) {
     return "route point";
@@ -997,12 +988,21 @@ function observeRouteResize(container: HTMLDivElement, map: L.Map) {
   };
 }
 
-function tooltipHtml(point: GeoPoint) {
-  const meta = point.subLabel ? `<div class="packet-map-tooltip__meta">${escapeHtml(point.subLabel)}</div>` : "";
+function tooltipContent(point: GeoPoint) {
+  const wrapper = document.createElement("div");
+  const title = document.createElement("div");
+  title.className = "packet-map-tooltip__title";
+  title.textContent = point.label;
+  wrapper.append(title);
 
-  return `<div class="packet-map-tooltip__title">${escapeHtml(point.label)}</div>
-         ${meta}
-        `;
+  if (point.subLabel) {
+    const meta = document.createElement("div");
+    meta.className = "packet-map-tooltip__meta";
+    meta.textContent = point.subLabel;
+    wrapper.append(meta);
+  }
+
+  return wrapper;
 }
 
 function addRouteMarkers(layer: L.LayerGroup, routePoints: GeoPoint[]) {
@@ -1022,7 +1022,7 @@ function addRouteMarkers(layer: L.LayerGroup, routePoints: GeoPoint[]) {
       zIndexOffset
     }).addTo(layer);
 
-    marker.bindTooltip(tooltipHtml(point), {
+    marker.bindTooltip(tooltipContent(point), {
       direction: "top",
       offset: [0, point.role === "transit" ? -10 : -18],
       opacity: 0.95,

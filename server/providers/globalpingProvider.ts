@@ -6,16 +6,20 @@ import type {
   VisitorContext
 } from "../../shared/types";
 import { enrichHopsWithGeo, measurementConfidence } from "../geoInference";
+import {
+  asnDigitsFromText,
+  isAsciiDigit,
+  isDecimalToken,
+  isDigitsOnly,
+  isWhitespace,
+  splitWhitespace
+} from "../textParsing";
 
 const DEFAULT_API_URL = "https://api.globalping.io/v1/measurements";
 const PROVIDER_TIMEOUT_MS = 42_000;
 const POLL_INTERVAL_MS = 1_250;
 const GLOBALPING_MAX_MTR_PACKETS = 16;
 const GLOBALPING_MTR_PROTOCOLS = ["ICMP", "TCP"] as const;
-const ASN_PATTERN = /\bAS\s*(\d+)\b/i;
-const HOP_LINE_PATTERN = /^(\d+)[.)]?\s+(.+)$/;
-const IPV4_PATTERN = /(\d{1,3}(?:\.\d{1,3}){3})/;
-const RTT_PATTERN = /(\d+(?:\.\d+)?)\s*ms/g;
 
 type GlobalpingProtocol = (typeof GLOBALPING_MTR_PROTOCOLS)[number];
 
@@ -138,17 +142,17 @@ function normalizeAsn(value: unknown): string | undefined {
       return undefined;
     }
 
-    if (/^AS\?\?\?$/i.test(trimmed)) {
+    if (trimmed.toUpperCase() === "AS???") {
       return "AS???";
     }
 
-    const asMatch = ASN_PATTERN.exec(trimmed);
+    const asDigits = asnDigitsFromText(trimmed);
 
-    if (asMatch) {
-      return `AS${asMatch[1]}`;
+    if (asDigits) {
+      return `AS${asDigits}`;
     }
 
-    if (/^\d{1,10}$/.test(trimmed)) {
+    if (isDigitsOnly(trimmed, 10)) {
       return `AS${trimmed}`;
     }
   }
@@ -391,12 +395,43 @@ function normalizeStatus(rttMs?: number, loss?: number): HopResult["status"] {
 
 function rttValues(rawHop: string) {
   const values: number[] = [];
-  let match: RegExpExecArray | null;
 
-  RTT_PATTERN.lastIndex = 0;
+  for (let index = 0; index < rawHop.length; index += 1) {
+    if (!isAsciiDigit(rawHop[index])) {
+      continue;
+    }
 
-  while ((match = RTT_PATTERN.exec(rawHop)) !== null) {
-    values.push(Number(match[1]));
+    let endIndex = index;
+    let decimalPoints = 0;
+
+    while (endIndex < rawHop.length) {
+      const character = rawHop[endIndex];
+
+      if (isAsciiDigit(character)) {
+        endIndex += 1;
+        continue;
+      }
+
+      if (character === "." && decimalPoints === 0) {
+        decimalPoints += 1;
+        endIndex += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    let unitIndex = endIndex;
+
+    while (unitIndex < rawHop.length && isWhitespace(rawHop[unitIndex])) {
+      unitIndex += 1;
+    }
+
+    if (rawHop[unitIndex]?.toLowerCase() === "m" && rawHop[unitIndex + 1]?.toLowerCase() === "s") {
+      values.push(Number(rawHop.slice(index, endIndex)));
+    }
+
+    index = endIndex;
   }
 
   return values;
@@ -411,7 +446,7 @@ function averageRtt(values: number[]) {
 }
 
 function parseMtrMetrics(tokens: string[]) {
-  const lossIndex = tokens.findIndex((token) => /^\d+(?:\.\d+)?%$/.test(token));
+  const lossIndex = tokens.findIndex((token) => token.endsWith("%") && isDecimalToken(token.slice(0, -1)));
 
   if (lossIndex < 0) {
     return {};
@@ -431,6 +466,64 @@ function parseMtrMetrics(tokens: string[]) {
   };
 }
 
+function parseHopLine(line: string) {
+  let index = 0;
+
+  while (index < line.length && isAsciiDigit(line[index])) {
+    index += 1;
+  }
+
+  if (index === 0) {
+    return undefined;
+  }
+
+  const hopNumber = Number(line.slice(0, index));
+
+  if (line[index] === "." || line[index] === ")") {
+    index += 1;
+  }
+
+  if (index >= line.length || !isWhitespace(line[index])) {
+    return undefined;
+  }
+
+  while (index < line.length && isWhitespace(line[index])) {
+    index += 1;
+  }
+
+  const rest = line.slice(index);
+
+  return rest ? { hopNumber, rest } : undefined;
+}
+
+function findIpv4(value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    if (!isAsciiDigit(value[index])) {
+      continue;
+    }
+
+    let endIndex = index;
+
+    while (endIndex < value.length && (isAsciiDigit(value[endIndex]) || value[endIndex] === ".")) {
+      endIndex += 1;
+    }
+
+    const candidate = value.slice(index, endIndex);
+    const octets = candidate.split(".");
+
+    if (
+      octets.length === 4 &&
+      octets.every((octet) => isDigitsOnly(octet, 3) && Number(octet) >= 0 && Number(octet) <= 255)
+    ) {
+      return candidate;
+    }
+
+    index = endIndex;
+  }
+
+  return undefined;
+}
+
 function rawHopHostname(tokens: string[], waitingForReply: boolean) {
   const firstHostToken = tokens[0];
 
@@ -442,23 +535,22 @@ function rawHopHostname(tokens: string[], waitingForReply: boolean) {
 }
 
 function parseRawHop(line: string): HopResult | undefined {
-  const hopMatch = HOP_LINE_PATTERN.exec(line);
+  const hopLine = parseHopLine(line);
 
-  if (!hopMatch) {
+  if (!hopLine) {
     return undefined;
   }
 
-  const hopNumber = Number(hopMatch[1]);
-  const rest = hopMatch[2];
-  const tokens = rest.split(/\s+/).filter(Boolean);
+  const { hopNumber, rest } = hopLine;
+  const tokens = splitWhitespace(rest);
   const asnFromToken = normalizeAsn(tokens[0]);
 
   if (asnFromToken) {
     tokens.shift();
   }
 
-  const waitingForReply = rest.includes("(waiting for reply)") || /\*\s+\*/.test(rest);
-  const ip = IPV4_PATTERN.exec(rest)?.[1];
+  const waitingForReply = rest.includes("(waiting for reply)") || tokens.filter((token) => token === "*").length >= 2;
+  const ip = findIpv4(rest);
   const metrics = parseMtrMetrics(tokens);
   const rttMs = metrics.avgRtt === undefined ? averageRtt(rttValues(rest)) : Math.round(metrics.avgRtt);
   const hostname = rawHopHostname(tokens, waitingForReply);

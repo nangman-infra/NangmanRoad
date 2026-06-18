@@ -1,10 +1,13 @@
 import net from "node:net";
 import type { TraceMode } from "../shared/types";
+import {
+  isAsciiAlpha,
+  isAsciiAlphaNumeric,
+  isAsciiDigit,
+  isWhitespaceOrControl
+} from "./textParsing";
 
-const DOMAIN_PATTERN =
-  /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/;
-
-const UNSAFE_TARGET_PATTERN = /[\s;&|<>`$\\'"()[\]{}]/;
+const UNSAFE_TARGET_CHARACTERS = new Set([";", "&", "|", "<", ">", "`", "$", "\\", "'", "\"", "(", ")", "[", "]", "{", "}"]);
 const RESERVED_DOMAIN_SUFFIXES = [
   ".localhost",
   ".local",
@@ -48,6 +51,51 @@ blockedIpv6Ranges.addSubnet("ff00::", 8, "ipv6");
 
 function isReservedDomain(target: string) {
   return RESERVED_DOMAINS.has(target) || RESERVED_DOMAIN_SUFFIXES.some((suffix) => target.endsWith(suffix));
+}
+
+function hasUnsafeTargetCharacter(target: string) {
+  for (const character of target) {
+    if (UNSAFE_TARGET_CHARACTERS.has(character) || isWhitespaceOrControl(character)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isValidDomainLabel(label: string) {
+  if (label.length === 0 || label.length > 63) {
+    return false;
+  }
+
+  if (!isAsciiAlphaNumeric(label[0]) || !isAsciiAlphaNumeric(label[label.length - 1])) {
+    return false;
+  }
+
+  for (const character of label) {
+    if (!isAsciiAlphaNumeric(character) && character !== "-") {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isValidDomain(target: string) {
+  const labels = target.split(".");
+  const tld = labels.at(-1);
+
+  if (labels.length < 2 || !tld || tld.length < 2 || tld.length > 63) {
+    return false;
+  }
+
+  for (const character of tld) {
+    if (!isAsciiAlpha(character)) {
+      return false;
+    }
+  }
+
+  return labels.every(isValidDomainLabel);
 }
 
 function ipv4ToNumber(ip: string) {
@@ -100,7 +148,7 @@ export function normalizeTarget(input: unknown): string {
     throw new Error("Target must be between 1 and 253 characters.");
   }
 
-  if (target.includes("://") || target.includes("/") || UNSAFE_TARGET_PATTERN.test(target)) {
+  if (target.includes("://") || target.includes("/") || hasUnsafeTargetCharacter(target)) {
     throw new Error("Enter only a domain or IP address, not a URL or command.");
   }
 
@@ -109,7 +157,7 @@ export function normalizeTarget(input: unknown): string {
     return target;
   }
 
-  if (DOMAIN_PATTERN.test(target)) {
+  if (isValidDomain(target)) {
     if (isReservedDomain(target)) {
       throw new Error("Enter a public domain or public IP address.");
     }

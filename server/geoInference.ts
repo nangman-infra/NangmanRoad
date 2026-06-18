@@ -7,6 +7,13 @@ import type {
   HopResult,
   MeasurementSource
 } from "../shared/types";
+import {
+  asnDigitsFromText,
+  compactWhitespace,
+  isAsciiDigit,
+  isWhitespace,
+  splitBySeparator
+} from "./textParsing";
 
 type GeoSource = Exclude<HopLocationSource, "source_probe" | "unknown">;
 type GeoProvider = "none" | "ipinfo" | "ip-api";
@@ -37,7 +44,6 @@ interface IpGeoRecord {
 
 const GEO_TIMEOUT_MS = Number(process.env.GEOIP_TIMEOUT_MS ?? 1_400);
 const REVERSE_DNS_TIMEOUT_MS = Number(process.env.REVERSE_DNS_TIMEOUT_MS ?? 900);
-const ASN_PATTERN = /\bAS\s*(\d+)\b/i;
 const geoCache = new Map<string, Promise<IpGeoRecord | undefined>>();
 const reverseCache = new Map<string, Promise<string | undefined>>();
 
@@ -148,25 +154,33 @@ function timeoutSignal(ms: number) {
   };
 }
 
+function isHostnameTokenSeparator(value: string) {
+  return value === "." || value === "_" || value === "-" || isWhitespace(value) || value === "(" || value === ")";
+}
+
+function splitHostnameTokens(value: string) {
+  return splitBySeparator(value, isHostnameTokenSeparator);
+}
+
 function normalizeAsn(value?: string) {
   if (!value) {
     return undefined;
   }
 
-  const match = ASN_PATTERN.exec(value);
+  const asnDigits = asnDigitsFromText(value);
 
-  return match ? `AS${match[1]}` : undefined;
+  return asnDigits ? `AS${asnDigits}` : undefined;
 }
 
 function removeLeadingTrailingDigits(value: string) {
   let startIndex = 0;
   let endIndex = value.length;
 
-  while (startIndex < endIndex && /\d/.test(value[startIndex])) {
+  while (startIndex < endIndex && isAsciiDigit(value[startIndex])) {
     startIndex += 1;
   }
 
-  while (endIndex > startIndex && /\d/.test(value[endIndex - 1])) {
+  while (endIndex > startIndex && isAsciiDigit(value[endIndex - 1])) {
     endIndex -= 1;
   }
 
@@ -186,7 +200,7 @@ function stripAsPrefix(value?: string) {
 
   let endIndex = 2;
 
-  while (endIndex < trimmed.length && /\d/.test(trimmed[endIndex])) {
+  while (endIndex < trimmed.length && isAsciiDigit(trimmed[endIndex])) {
     endIndex += 1;
   }
 
@@ -249,13 +263,7 @@ function isPublicIp(ip?: string): ip is string {
 }
 
 function tokeniseHostname(hostname: string) {
-  return hostname
-    .toLowerCase()
-    .replaceAll("(", " ")
-    .replaceAll(")", " ")
-    .split(/[.\s_-]+/)
-    .map(removeLeadingTrailingDigits)
-    .filter(Boolean);
+  return splitHostnameTokens(hostname.toLowerCase()).map(removeLeadingTrailingDigits).filter(Boolean);
 }
 
 function aliasMatchesHostname(alias: string, normalizedHost: string, tokens: string[]) {
@@ -284,7 +292,7 @@ function inferCityFromHostname(hostname?: string): GeoCandidate | undefined {
     return undefined;
   }
 
-  const normalizedHost = hostname.toLowerCase().split(/\s+/).join("");
+  const normalizedHost = compactWhitespace(hostname.toLowerCase());
   const tokens = tokeniseHostname(hostname);
 
   for (const city of cityHints) {
