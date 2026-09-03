@@ -51,7 +51,14 @@ interface IpGeoRecord {
 
 const GEO_TIMEOUT_MS = Number(process.env.GEOIP_TIMEOUT_MS ?? 1_400);
 const REVERSE_DNS_TIMEOUT_MS = Number(process.env.REVERSE_DNS_TIMEOUT_MS ?? 900);
-const geoCache = new Map<string, Promise<IpGeoRecord | undefined>>();
+interface GeoCacheEntry {
+  expiresAt: number;
+  value: Promise<IpGeoRecord | undefined>;
+}
+
+const GEO_CACHE_TTL_MS = Number(process.env.GEOIP_CACHE_TTL_MS ?? 6 * 60 * 60_000);
+const GEO_FAILURE_CACHE_MS = Number(process.env.GEOIP_FAILURE_CACHE_MS ?? 5 * 60_000);
+const geoCache = new Map<string, GeoCacheEntry>();
 const reverseCache = new Map<string, Promise<string | undefined>>();
 // ponytail: one process-wide pause window; per-endpoint budgets only if this ever runs multi-instance.
 let ipApiPausedUntil = 0;
@@ -582,14 +589,15 @@ async function lookupIpGeo(ip?: string) {
 
   const publicIp = ip;
 
+  const now = Date.now();
   const cached = geoCache.get(publicIp);
 
-  if (cached) {
-    return cached;
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
   }
 
   const provider = resolveGeoProvider();
-  const pending = (async () => {
+  const value = (async () => {
     if (provider === "none") {
       return undefined;
     }
@@ -601,13 +609,15 @@ async function lookupIpGeo(ip?: string) {
     return fetchIpApi(publicIp);
   })();
 
-  geoCache.set(publicIp, pending);
+  geoCache.set(publicIp, { value, expiresAt: now + GEO_CACHE_TTL_MS });
 
-  const record = await pending;
+  const record = await value;
 
   if (!record) {
-    // A timeout or a rate-limit pause must not poison this IP for the rest of the process.
-    geoCache.delete(publicIp);
+    // Retry eventually, but never on every poll of the same measurement: the provider is polled
+    // about once a second, so re-fetching each unresolved hop turns one trace into hundreds of
+    // outbound requests.
+    geoCache.set(publicIp, { value, expiresAt: now + GEO_FAILURE_CACHE_MS });
   }
 
   return record;

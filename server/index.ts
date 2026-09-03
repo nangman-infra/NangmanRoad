@@ -69,7 +69,12 @@ app.get("/api/measurements/:id/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  // nginx buffers proxied responses by default, which holds every event until the stream ends.
+  // It honors this header per response, so the reverse proxy needs no config change.
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
+  // Give any intermediary a first byte immediately instead of waiting on the first event.
+  res.write(": connected\n\n");
 
   const send = (event: MeasurementEvent) => {
     res.write(`event: ${event.type}\n`);

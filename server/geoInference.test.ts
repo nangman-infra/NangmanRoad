@@ -201,6 +201,25 @@ describe("enrichHopsWithGeo", () => {
     expect(hops.map((hop) => hop.city)).toEqual(["Frankfurt", "Frankfurt"]);
   });
 
+  it("does not re-request an unresolved hop IP on every poll", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    delete process.env.IP_API_KEY;
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "fail", message: "reserved range" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const hop = { hopNumber: 1, ip: "9.9.9.20", hostname: "g.example.net", rttMs: 10, status: "ok" as const };
+
+    await enrichHopsWithGeo({ hops: [hop] });
+    await enrichHopsWithGeo({ hops: [hop] });
+    await enrichHopsWithGeo({ hops: [hop] });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
   it("adds the ip-api Pro key to GeoIP requests when configured", async () => {
     process.env.GEOIP_PROVIDER = "ip-api";
     process.env.IP_API_URL = "https://pro.ip-api.com";
