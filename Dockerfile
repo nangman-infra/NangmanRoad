@@ -10,7 +10,9 @@ FROM deps AS builder
 WORKDIR /app
 
 # Vite inlines VITE_* at build time, so this cannot be a runtime environment variable.
-ARG VITE_CARTO_API_KEY=""
+# Public client-side basemap key: it ships in the JS bundle either way.
+# A build environment variable of the same name overrides this default.
+ARG VITE_CARTO_API_KEY="cb1_2vcr_1_934e7511f075672d3c38f898"
 ENV VITE_CARTO_API_KEY=$VITE_CARTO_API_KEY
 
 COPY . .
