@@ -609,7 +609,7 @@ function mergeRepeatedDisplayPoints(points: GeoPoint[]) {
 
     const previous = merged.at(-1);
 
-    if (!previous || previous.role !== "transit" || !sameDisplayPoint(previous, point)) {
+    if (previous?.role !== "transit" || !sameDisplayPoint(previous, point)) {
       merged.push(point);
       return;
     }
