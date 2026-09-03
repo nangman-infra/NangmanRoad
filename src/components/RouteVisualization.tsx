@@ -227,12 +227,12 @@ function formatCountryLabel(country?: string) {
     return "US";
   }
 
-  if (normalized === "gb" || normalized.includes("united kingdom")) {
-    return "UK";
+  if (normalized === "hk" || normalized === "hong kong") {
+    return "Hong Kong";
   }
 
-  if (normalized === "hong kong") {
-    return "Hong Kong";
+  if (normalized === "gb" || normalized.includes("united kingdom")) {
+    return "UK";
   }
 
   if (normalized === "germany") {
@@ -607,14 +607,14 @@ function mergeRepeatedDisplayPoints(points: GeoPoint[]) {
       return;
     }
 
-    const existingIndex = merged.findIndex((candidate) => candidate.role === "transit" && sameDisplayPoint(candidate, point));
+    const previous = merged.at(-1);
 
-    if (existingIndex === -1) {
+    if (!previous || previous.role !== "transit" || !sameDisplayPoint(previous, point)) {
       merged.push(point);
       return;
     }
 
-    merged[existingIndex] = mergeTransitPoint(merged[existingIndex], point);
+    merged[merged.length - 1] = mergeTransitPoint(previous, point);
   });
 
   return merged;

@@ -36,8 +36,15 @@ interface IpGeoRecord {
   asName?: string;
   asn?: string;
   city?: string;
+  district?: string;
+  regionName?: string;
   country?: string;
   hostname?: string;
+  isp?: string;
+  org?: string;
+  hosting?: boolean;
+  mobile?: boolean;
+  proxy?: boolean;
   latitude?: number;
   longitude?: number;
 }
@@ -46,6 +53,14 @@ const GEO_TIMEOUT_MS = Number(process.env.GEOIP_TIMEOUT_MS ?? 1_400);
 const REVERSE_DNS_TIMEOUT_MS = Number(process.env.REVERSE_DNS_TIMEOUT_MS ?? 900);
 const geoCache = new Map<string, Promise<IpGeoRecord | undefined>>();
 const reverseCache = new Map<string, Promise<string | undefined>>();
+// ponytail: one process-wide pause window; per-endpoint budgets only if this ever runs multi-instance.
+let ipApiPausedUntil = 0;
+
+export function resetGeoState() {
+  geoCache.clear();
+  reverseCache.clear();
+  ipApiPausedUntil = 0;
+}
 
 const cityHints: Array<GeoPoint & { aliases: string[] }> = [
   { city: "Seoul", country: "KR", latitude: 37.5665, longitude: 126.978, aliases: ["seoul", "sel", "icn"] },
@@ -427,6 +442,41 @@ function countryFromIpApi(data: Record<string, unknown>) {
   return undefined;
 }
 
+function booleanFromIpApi(value: unknown) {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function stringFromIpApi(data: Record<string, unknown>, key: string) {
+  const value = data[key];
+
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function headerNumber(response: Response, name: string) {
+  const value = response.headers.get(name);
+
+  if (value === null) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function noteIpApiRateLimit(response: Response) {
+  const remaining = headerNumber(response, "x-rl");
+
+  if (response.status !== 429 && remaining !== 0) {
+    return;
+  }
+
+  const pauseSeconds = Math.max(headerNumber(response, "x-ttl") ?? 60, 1);
+
+  ipApiPausedUntil = Date.now() + pauseSeconds * 1_000;
+  console.warn(`ip-api rate limit reached. Pausing GeoIP lookups for ${pauseSeconds}s.`);
+}
+
 async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
   const configuredUrl = process.env.IP_API_URL?.trim();
 
@@ -434,26 +484,60 @@ async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
     return undefined;
   }
 
+  if (Date.now() < ipApiPausedUntil) {
+    return undefined;
+  }
+
   const timer = timeoutSignal(GEO_TIMEOUT_MS);
 
   try {
-    const fields = "status,message,country,countryCode,city,lat,lon,as,asname,reverse,query";
+    const fields = [
+      "status",
+      "message",
+      "country",
+      "countryCode",
+      "region",
+      "regionName",
+      "city",
+      "district",
+      "lat",
+      "lon",
+      "isp",
+      "org",
+      "as",
+      "asname",
+      "reverse",
+      "query",
+      "mobile",
+      "proxy",
+      "hosting"
+    ].join(",");
     const url = new URL(configuredUrl);
     url.pathname = `${trimTrailingPathSlash(url.pathname)}/json/${encodeURIComponent(ip)}`;
     url.searchParams.set("fields", fields);
+
+    const apiKey = process.env.IP_API_KEY?.trim();
+
+    if (apiKey) {
+      url.searchParams.set("key", apiKey);
+    }
 
     const response = await fetch(url, {
       signal: timer.signal,
       headers: { accept: "application/json" }
     });
 
+    noteIpApiRateLimit(response);
+
     if (!response.ok) {
+      console.warn(`ip-api lookup failed for ${ip}. HTTP ${response.status}.`);
       return undefined;
     }
 
     const data = (await response.json()) as Record<string, unknown>;
 
     if (data.status !== "success") {
+      console.warn(`ip-api lookup rejected for ${ip}. ${stringFromIpApi(data, "message") ?? "No message returned."}`);
       return undefined;
     }
 
@@ -461,14 +545,22 @@ async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
 
     return {
       asn: normalizeAsn(asText),
-      asName: typeof data.asname === "string" ? data.asname : stripAsPrefix(asText),
-      city: typeof data.city === "string" ? data.city : undefined,
+      asName: stringFromIpApi(data, "asname") ?? stripAsPrefix(asText),
+      city: stringFromIpApi(data, "city"),
+      district: stringFromIpApi(data, "district"),
+      regionName: stringFromIpApi(data, "regionName"),
       country: countryFromIpApi(data),
-      hostname: typeof data.reverse === "string" ? data.reverse : undefined,
+      hostname: stringFromIpApi(data, "reverse"),
+      isp: stringFromIpApi(data, "isp"),
+      org: stringFromIpApi(data, "org"),
+      hosting: booleanFromIpApi(data.hosting),
+      mobile: booleanFromIpApi(data.mobile),
+      proxy: booleanFromIpApi(data.proxy),
       latitude: finite(data.lat),
       longitude: finite(data.lon)
     };
-  } catch {
+  } catch (error) {
+    console.warn(`ip-api lookup errored for ${ip}. ${error instanceof Error ? error.message : "Unknown error."}`);
     return undefined;
   } finally {
     timer.done();
@@ -490,31 +582,46 @@ async function lookupIpGeo(ip?: string) {
 
   const publicIp = ip;
 
-  if (!geoCache.has(publicIp)) {
-    const provider = resolveGeoProvider();
+  const cached = geoCache.get(publicIp);
 
-    geoCache.set(
-      publicIp,
-      (async () => {
-        if (provider === "none") {
-          return undefined;
-        }
-
-        if (provider === "ipinfo") {
-          return fetchIpInfo(publicIp);
-        }
-
-        return fetchIpApi(publicIp);
-      })()
-    );
+  if (cached) {
+    return cached;
   }
 
-  return geoCache.get(publicIp);
+  const provider = resolveGeoProvider();
+  const pending = (async () => {
+    if (provider === "none") {
+      return undefined;
+    }
+
+    if (provider === "ipinfo") {
+      return fetchIpInfo(publicIp);
+    }
+
+    return fetchIpApi(publicIp);
+  })();
+
+  geoCache.set(publicIp, pending);
+
+  const record = await pending;
+
+  if (!record) {
+    // A timeout or a rate-limit pause must not poison this IP for the rest of the process.
+    geoCache.delete(publicIp);
+  }
+
+  return record;
 }
 
 function geoCandidate(record?: IpGeoRecord): GeoCandidate | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const city = record.city ?? record.district ?? record.regionName;
+
   if (
-    !record?.city ||
+    !city ||
     !record.country ||
     typeof record.latitude !== "number" ||
     typeof record.longitude !== "number"
@@ -522,14 +629,38 @@ function geoCandidate(record?: IpGeoRecord): GeoCandidate | undefined {
     return undefined;
   }
 
+  const evidence = ["IP GeoIP database match"];
+
+  if (record.asn && record.asName) {
+    evidence.push(`${record.asn} ${record.asName}`);
+  }
+
+  if (record.isp && record.org && record.isp !== record.org) {
+    evidence.push(`ISP ${record.isp}; org ${record.org}`);
+  } else if (record.isp ?? record.org) {
+    evidence.push(`network ${(record.isp ?? record.org) as string}`);
+  }
+
+  if (record.hosting) {
+    evidence.push("hosting network hint");
+  }
+
+  if (record.proxy) {
+    evidence.push("proxy network hint");
+  }
+
+  if (record.mobile) {
+    evidence.push("mobile network hint");
+  }
+
   return {
-    city: record.city,
+    city,
     country: record.country,
     latitude: record.latitude,
     longitude: record.longitude,
-    confidence: "medium",
-    evidence: ["IP GeoIP database match"],
-    precision: "city",
+    confidence: record.city ? "medium" : "low",
+    evidence,
+    precision: record.city || record.district ? "city" : "country",
     source: "geoip"
   };
 }
@@ -798,10 +929,23 @@ function candidateScore(candidate: GeoCandidate, candidates: GeoCandidate[], sou
     combined: 18,
     reverse_dns: 14,
     provider: 12,
-    geoip: 8
+    geoip: 9
+  };
+  const precisionScore: Record<HopLocationPrecision, number> = {
+    exact: 8,
+    city: 6,
+    metro: 4,
+    country: 1,
+    unknown: 0
   };
 
-  return confidenceScore[candidate.confidence] + sourceScore[candidate.source] + evidenceAgreementScore(candidate, candidates) + rttSupportScore(candidate, source, rttMs);
+  return (
+    confidenceScore[candidate.confidence] +
+    sourceScore[candidate.source] +
+    precisionScore[candidate.precision] +
+    evidenceAgreementScore(candidate, candidates) +
+    rttSupportScore(candidate, source, rttMs)
+  );
 }
 
 function chooseCandidate(candidates: GeoCandidate[], source?: GeoPoint, rttMs?: number): GeoCandidate | undefined {
@@ -840,10 +984,13 @@ function chooseCandidate(candidates: GeoCandidate[], source?: GeoPoint, rttMs?: 
 async function enrichHop(hop: HopResult, source?: GeoPoint): Promise<HopResult> {
   const reversedHostname = hop.hostname ? undefined : await reverseDns(hop.ip);
   const hostname = hop.hostname ?? reversedHostname;
-  const geo = await lookupIpGeo(hop.ip);
+  const hostnameCandidate = inferCityFromHostname(hostname);
+  // ponytail: reverse DNS already names the city and the ASN is known, so skip the lookup.
+  // Costs the "combined" corroboration bonus; buys headroom under the free 45/min budget.
+  const geo = hostnameCandidate && hop.asn ? undefined : await lookupIpGeo(hop.ip);
   const candidates = [
     cityFromProvider(hop),
-    inferCityFromHostname(hostname),
+    hostnameCandidate,
     inferCityFromHostname(geo?.hostname),
     geoCandidate(geo)
   ].filter((candidate): candidate is GeoCandidate => Boolean(candidate));
@@ -878,6 +1025,93 @@ async function enrichHop(hop: HopResult, source?: GeoPoint): Promise<HopResult> 
   };
 }
 
+function locatedPointFromHop(hop: HopResult): GeoPoint | undefined {
+  if (
+    typeof hop.latitude !== "number" ||
+    !Number.isFinite(hop.latitude) ||
+    typeof hop.longitude !== "number" ||
+    !Number.isFinite(hop.longitude)
+  ) {
+    return undefined;
+  }
+
+  return {
+    city: hop.city ?? "Unknown",
+    country: hop.country ?? "Unknown",
+    latitude: hop.latitude,
+    longitude: hop.longitude
+  };
+}
+
+function isWeakMapLocation(hop: HopResult) {
+  if (hop.locationConfidence === "high" || hop.locationSource === "combined" || hop.locationSource === "reverse_dns") {
+    return false;
+  }
+
+  return hop.locationSource === "geoip" || hop.locationSource === "provider";
+}
+
+function nearestLocatedHop(hops: HopResult[], startIndex: number, step: -1 | 1) {
+  for (let index = startIndex; index >= 0 && index < hops.length; index += step) {
+    const point = locatedPointFromHop(hops[index]);
+
+    if (point) {
+      return { hop: hops[index], point };
+    }
+  }
+
+  return undefined;
+}
+
+function clearHopLocation(hop: HopResult, evidence: string): HopResult {
+  return {
+    ...hop,
+    city: undefined,
+    country: undefined,
+    latitude: undefined,
+    longitude: undefined,
+    locationConfidence: "low",
+    locationSource: "unknown",
+    locationPrecision: "unknown",
+    locationEvidence: [...(hop.locationEvidence ?? []), evidence]
+  };
+}
+
+function stabilizeRouteLocations(hops: HopResult[]) {
+  return hops.map((hop, index) => {
+    const point = locatedPointFromHop(hop);
+
+    if (!point || !isWeakMapLocation(hop)) {
+      return hop;
+    }
+
+    const previous = nearestLocatedHop(hops, index - 1, -1);
+    const next = nearestLocatedHop(hops, index + 1, 1);
+
+    if (!previous || !next) {
+      return hop;
+    }
+
+    const neighborDistance = distanceKm(previous.point, next.point);
+    const previousDistance = distanceKm(previous.point, point);
+    const nextDistance = distanceKm(next.point, point);
+    const weakOutlierBetweenNearbyStrongPoints =
+      neighborDistance < 260 &&
+      previousDistance > 900 &&
+      nextDistance > 900 &&
+      (previous.hop.locationConfidence === "high" || next.hop.locationConfidence === "high");
+
+    if (!weakOutlierBetweenNearbyStrongPoints) {
+      return hop;
+    }
+
+    return clearHopLocation(
+      hop,
+      "Suppressed weak GeoIP point because adjacent reliable route points stay in the same metro area"
+    );
+  });
+}
+
 async function mapWithConcurrency<T, R>(values: T[], limit: number, mapper: (value: T) => Promise<R>) {
   const results: R[] = [];
   let nextIndex = 0;
@@ -903,7 +1137,9 @@ export async function enrichHopsWithGeo(params: {
 }) {
   const source = sourcePoint(params.source);
 
-  return mapWithConcurrency(params.hops, 4, (hop) => enrichHop(hop, source));
+  const enrichedHops = await mapWithConcurrency(params.hops, 4, (hop) => enrichHop(hop, source));
+
+  return stabilizeRouteLocations(enrichedHops);
 }
 
 export function measurementConfidence(hops: HopResult[]): Confidence {

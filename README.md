@@ -56,9 +56,10 @@ The map does not blindly place every hop. It draws only confidence-scored locati
 
 - coordinates returned by the measurement provider
 - reverse-DNS city, airport, and network hints
-- IP geolocation lookup
+- IP geolocation lookup, including ip-api Pro city, region, district, ASN, ISP, organization, hosting, and proxy hints when configured
 - ASN and known network patterns
 - RTT sanity checks from the selected probe
+- route-neighbor sanity checks that hide weak GeoIP points when adjacent reliable hops stay in the same metro area
 
 Unknown or low-confidence hops stay in the terminal output instead of being forced onto the map.
 
@@ -78,8 +79,31 @@ This matters because public IP geolocation is often approximate. A server physic
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
+
+GeoIP is on by default using the free ip-api endpoint:
+
+```bash
+GEOIP_PROVIDER=ip-api
+IP_API_URL=http://ip-api.com
+IP_API_KEY=
+```
+
+The free endpoint is HTTP-only, allows 45 requests per minute per source IP, and is
+non-commercial. The backend calls it server-side, so browser mixed-content rules do not
+apply. It reports `X-Rl` and `X-Ttl`; the server honors them and pauses lookups when the
+budget runs out, because repeatedly exceeding the limit gets the source IP banned for an
+hour. One measurement can spend 20-30 lookups, so a busy public deployment will hit the
+budget. Switch to ip-api Pro for HTTPS, unlimited requests, and commercial use:
+
+```bash
+IP_API_URL=https://pro.ip-api.com
+IP_API_KEY=your-ip-api-pro-key
+```
+
+Do not commit `.env` or provider keys.
 
 The dev script starts:
 
@@ -105,6 +129,7 @@ Current scripts:
 
 ```bash
 npm run check   # TypeScript typecheck
+npm test        # Vitest unit tests with coverage
 npm run build   # TypeScript typecheck + Vite web build + Express server bundle
 npm run start   # Run the production server from dist-server/index.js
 ```
@@ -113,9 +138,8 @@ Not configured yet:
 
 - `lint`: no ESLint or Biome config is present.
 - `format`: no Prettier or Biome config is present.
-- `test`: no unit/integration test runner is present.
 
-Before a production release, add linting and at least a focused test suite for target validation, provider parsing, and route geolocation inference.
+Before a production release, add linting/formatting and keep the focused test suite for target validation, provider parsing, and route geolocation inference passing.
 
 ## Docker
 
@@ -165,6 +189,8 @@ GLOBALPING_API_URL=https://api.globalping.io/v1/measurements
 GLOBALPING_TOKEN=
 MEASUREMENT_PROVIDER=globalping
 GEOIP_PROVIDER=ip-api
+IP_API_URL=https://pro.ip-api.com
+IP_API_KEY=
 IPINFO_TOKEN=
 GEOIP_TIMEOUT_MS=1400
 REVERSE_DNS_TIMEOUT_MS=900
@@ -178,11 +204,13 @@ Provider options:
 
 GeoIP options:
 
-- `GEOIP_PROVIDER=ip-api`: development default.
+- `GEOIP_PROVIDER=ip-api`: use ip-api for hop city/ASN enrichment.
+- `IP_API_URL=https://pro.ip-api.com`: HTTPS ip-api Pro endpoint for production.
+- `IP_API_KEY`: ip-api Pro key. Keep this in local `.env`, Jenkins credentials, or server environment only.
 - `GEOIP_PROVIDER=ipinfo`: requires `IPINFO_TOKEN`.
 - `GEOIP_PROVIDER=none`: disables external IP geolocation.
 
-For production, use a licensed GeoIP source or a local database if possible. Free public APIs are useful for development, but they can have rate limits, terms, and stale location records.
+For production, use a licensed HTTPS GeoIP source such as ip-api Pro. Do not commit provider keys to Git.
 
 ## API
 

@@ -1,4 +1,50 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
+function loadLocalEnv() {
+  const envPath = path.resolve(process.cwd(), ".env");
+
+  if (!fs.existsSync(envPath)) {
+    return {};
+  }
+
+  const entries = {};
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    let value = trimmed.slice(separatorIndex + 1).trim();
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    entries[key] = value;
+  }
+
+  return entries;
+}
+
+const childEnv = {
+  ...loadLocalEnv(),
+  ...process.env
+};
 
 const commands = [
   ["api", "npm", ["run", "dev:api"]],
@@ -7,6 +53,7 @@ const commands = [
 
 const children = commands.map(([label, command, args]) => {
   const child = spawn(command, args, {
+    env: childEnv,
     stdio: ["inherit", "pipe", "pipe"],
     shell: process.platform === "win32"
   });

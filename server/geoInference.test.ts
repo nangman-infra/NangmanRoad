@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enrichHopsWithGeo, measurementConfidence, resolveGeoProvider } from "./geoInference";
+import { enrichHopsWithGeo, measurementConfidence, resetGeoState, resolveGeoProvider } from "./geoInference";
 
 const originalGeoProvider = process.env.GEOIP_PROVIDER;
 const originalIpApiUrl = process.env.IP_API_URL;
+const originalIpApiKey = process.env.IP_API_KEY;
 
 afterEach(() => {
   if (originalGeoProvider === undefined) {
@@ -17,6 +18,13 @@ afterEach(() => {
     process.env.IP_API_URL = originalIpApiUrl;
   }
 
+  if (originalIpApiKey === undefined) {
+    delete process.env.IP_API_KEY;
+  } else {
+    process.env.IP_API_KEY = originalIpApiKey;
+  }
+
+  resetGeoState();
   vi.unstubAllGlobals();
 });
 
@@ -40,7 +48,7 @@ describe("enrichHopsWithGeo", () => {
     process.env.GEOIP_PROVIDER = "ip-api";
     process.env.IP_API_URL = "https://geo.example.test";
 
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify({
       status: "success",
       countryCode: "JP",
       country: "Japan",
@@ -78,6 +86,212 @@ describe("enrichHopsWithGeo", () => {
       locationConfidence: "high",
       locationSource: "provider"
     });
+  });
+
+  it("stops spending requests after ip-api reports the free-tier limit", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    delete process.env.IP_API_KEY;
+
+    const fetchMock = vi.fn(
+      async () => new Response("", { status: 429, headers: { "x-rl": "0", "x-ttl": "45" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await enrichHopsWithGeo({
+      hops: [{ hopNumber: 1, ip: "9.9.9.9", hostname: "a.example.net", rttMs: 10, status: "ok" }]
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    await enrichHopsWithGeo({
+      hops: [{ hopNumber: 2, ip: "9.9.9.10", hostname: "b.example.net", rttMs: 12, status: "ok" }]
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("skips the GeoIP lookup when reverse DNS already names the city", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    delete process.env.IP_API_KEY;
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "fail" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [hop] = await enrichHopsWithGeo({
+      hops: [
+        {
+          hopNumber: 1,
+          ip: "9.9.9.11",
+          hostname: "ae-1.r02.icn01.example.net",
+          asn: "AS3356",
+          rttMs: 14,
+          status: "ok"
+        }
+      ]
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(hop).toMatchObject({ city: "Seoul", locationSource: "reverse_dns" });
+  });
+
+  it("logs and skips ip-api responses that are not successful", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    delete process.env.IP_API_KEY;
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ status: "fail", message: "private range" })))
+    );
+
+    const [hop] = await enrichHopsWithGeo({
+      hops: [{ hopNumber: 1, ip: "9.9.9.12", hostname: "c.example.net", rttMs: 10, status: "ok" }]
+    });
+
+    expect(hop.locationSource).toBe("unknown");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("private range"));
+    warn.mockRestore();
+  });
+
+  it("logs and skips when the ip-api request throws", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    delete process.env.IP_API_KEY;
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("socket hang up");
+    }));
+
+    const [hop] = await enrichHopsWithGeo({
+      hops: [{ hopNumber: 1, ip: "9.9.9.13", hostname: "d.example.net", rttMs: 10, status: "ok" }]
+    });
+
+    expect(hop.locationSource).toBe("unknown");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("socket hang up"));
+    warn.mockRestore();
+  });
+
+  it("looks up a repeated hop IP once and ignores non-numeric rate limit headers", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    delete process.env.IP_API_KEY;
+
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      countryCode: "DE",
+      city: "Frankfurt",
+      lat: 50.1109,
+      lon: 8.6821,
+      as: "AS3320 Deutsche Telekom"
+    }), { headers: { "x-rl": "n/a", "x-ttl": "n/a" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const hops = await enrichHopsWithGeo({
+      hops: [
+        { hopNumber: 1, ip: "9.9.9.14", hostname: "e.example.net", rttMs: 10, status: "ok" },
+        { hopNumber: 2, ip: "9.9.9.14", hostname: "f.example.net", rttMs: 11, status: "ok" }
+      ]
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(hops.map((hop) => hop.city)).toEqual(["Frankfurt", "Frankfurt"]);
+  });
+
+  it("adds the ip-api Pro key to GeoIP requests when configured", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://pro.ip-api.com";
+    process.env.IP_API_KEY = "secret-pro-key";
+
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify({
+      status: "success",
+      countryCode: "US",
+      country: "United States",
+      city: "Los Angeles",
+      lat: 34.0522,
+      lon: -118.2437,
+      as: "AS13335 Cloudflare",
+      asname: "Cloudflare"
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await enrichHopsWithGeo({
+      hops: [
+        {
+          hopNumber: 1,
+          ip: "1.1.1.1",
+          rttMs: 120,
+          status: "ok"
+        }
+      ]
+    });
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+
+    expect(url.origin).toBe("https://pro.ip-api.com");
+    expect(url.pathname).toBe("/json/1.1.1.1");
+    expect(url.searchParams.get("key")).toBe("secret-pro-key");
+    expect(url.searchParams.get("fields")).toContain("asname");
+    expect(url.searchParams.get("fields")).toContain("regionName");
+    expect(url.searchParams.get("fields")).toContain("district");
+    expect(url.searchParams.get("fields")).toContain("isp");
+    expect(url.searchParams.get("fields")).toContain("org");
+    expect(url.searchParams.get("fields")).toContain("hosting");
+    expect(url.searchParams.get("fields")).toContain("proxy");
+  });
+
+  it("normalizes district-level Hong Kong GeoIP results to a readable metro point", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://geo.example.test";
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      countryCode: "HK",
+      country: "Hong Kong",
+      regionName: "Wan Chai",
+      city: "Wan Chai",
+      district: "Wan Chai",
+      lat: 22.2797,
+      lon: 114.1717,
+      as: "AS4637 Telstra Global",
+      asname: "Telstra Global",
+      isp: "Telstra Global",
+      org: "Telstra Global",
+      hosting: true,
+      proxy: false
+    }))));
+
+    const [hop] = await enrichHopsWithGeo({
+      source: {
+        provider: "globalping",
+        city: "Seoul",
+        country: "KR",
+        latitude: 37.57,
+        longitude: 126.98,
+        note: "Measured from a nearby network probe."
+      },
+      hops: [
+        {
+          hopNumber: 4,
+          ip: "93.184.216.34",
+          rttMs: 32,
+          status: "ok"
+        }
+      ]
+    });
+
+    expect(hop).toMatchObject({
+      asn: "AS4637",
+      asName: "Telstra Global",
+      city: "Hong Kong",
+      country: "HK",
+      locationSource: "geoip",
+      locationPrecision: "city"
+    });
+    expect(hop.locationEvidence).toContain("Wan Chai normalized to Hong Kong metro for route readability");
   });
 
   it("combines hostname and GeoIP evidence when both point to the same city", async () => {
@@ -233,6 +447,65 @@ describe("enrichHopsWithGeo", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(hops.every((hop) => hop.locationSource === "unknown")).toBe(true);
+  });
+
+  it("suppresses weak GeoIP outliers between nearby reliable route points", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://geo.example.test";
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      status: "success",
+      countryCode: "US",
+      country: "United States",
+      regionName: "California",
+      city: "Los Angeles",
+      lat: 34.0522,
+      lon: -118.2437,
+      as: "AS64500 Example Network",
+      asname: "Example Network"
+    }))));
+
+    const hops = await enrichHopsWithGeo({
+      hops: [
+        {
+          hopNumber: 1,
+          ip: "10.0.0.1",
+          city: "Seoul",
+          country: "KR",
+          latitude: 37.5665,
+          longitude: 126.978,
+          rttMs: 2,
+          status: "ok"
+        },
+        {
+          hopNumber: 2,
+          ip: "44.44.44.44",
+          rttMs: 80,
+          status: "ok"
+        },
+        {
+          hopNumber: 3,
+          ip: "10.0.0.2",
+          city: "Seoul",
+          country: "KR",
+          latitude: 37.5651,
+          longitude: 126.9895,
+          rttMs: 3,
+          status: "ok"
+        }
+      ]
+    });
+
+    expect(hops[1]).toMatchObject({
+      hopNumber: 2,
+      locationConfidence: "low",
+      locationPrecision: "unknown",
+      locationSource: "unknown"
+    });
+    expect(hops[1].city).toBeUndefined();
+    expect(hops[1].locationEvidence).toContain(
+      "Suppressed weak GeoIP point because adjacent reliable route points stay in the same metro area"
+    );
   });
 });
 

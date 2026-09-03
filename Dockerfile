@@ -18,6 +18,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=8787
+ENV GEOIP_PROVIDER=ip-api
+ENV IP_API_URL=http://ip-api.com
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nangman
