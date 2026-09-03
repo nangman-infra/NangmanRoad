@@ -1195,12 +1195,14 @@ export function RouteVisualization({ mode, status, target, hops, source, theme }
       return;
     }
 
-    const tileUrl = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+    // CARTO watermarks unauthenticated raster tiles. Without a key the map still works,
+    // so this stays optional instead of failing the render.
+    const cartoApiKey = import.meta.env.VITE_CARTO_API_KEY?.trim();
+    const tileUrl = `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : ""}`;
     const attribution =
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
     const tileLayer = L.tileLayer(tileUrl, {
-      subdomains: "abcd",
       maxZoom: 20,
       noWrap: true,
       bounds: flatMapBounds,

@@ -57,7 +57,7 @@ export const corsOptions: CorsOptionsDelegate<Request> = (req, callback) => {
 export function applySecurityHeaders(_req: Request, res: Response, next: NextFunction) {
   const nonce = randomBytes(16).toString("base64");
   res.locals.cspNonce = nonce;
-  const cartoTileHosts = "https://a.basemaps.cartocdn.com https://b.basemaps.cartocdn.com https://c.basemaps.cartocdn.com https://d.basemaps.cartocdn.com";
+  const cartoTileHosts = "https://basemaps.cartocdn.com";
   const csp = [
     "default-src 'self'",
     "base-uri 'self'",

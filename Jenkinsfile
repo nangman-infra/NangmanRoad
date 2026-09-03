@@ -260,6 +260,9 @@ pipeline {
 
                                     def buildArgs = [
                                         "--platform ${env.PLATFORMS}",
+                                        // Vite inlines this at build time. Unset resolves to empty,
+                                        // which builds fine and just keeps CARTO's watermark.
+                                        '--build-arg VITE_CARTO_API_KEY=$VITE_CARTO_API_KEY',
                                     ] + tagArgs
                                     if (cacheFromArg) {
                                         buildArgs << cacheFromArg

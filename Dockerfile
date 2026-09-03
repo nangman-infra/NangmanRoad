@@ -9,6 +9,10 @@ FROM deps AS builder
 
 WORKDIR /app
 
+# Vite inlines VITE_* at build time, so this cannot be a runtime environment variable.
+ARG VITE_CARTO_API_KEY=""
+ENV VITE_CARTO_API_KEY=$VITE_CARTO_API_KEY
+
 COPY . .
 RUN npm run build
 
