@@ -743,16 +743,61 @@ function siteLabel(normalizedHost: string, domain: string) {
   return removeLeadingTrailingDigits(head.split(".").at(-1) ?? "");
 }
 
+interface SiteOnDomain {
+  site: ResearchSite;
+  domain: string;
+}
+
+interface SiteMatch {
+  site: ResearchSite;
+  matched: string;
+}
+
+// The site written where the network always writes it.
+function siteFromLabel(here: SiteOnDomain[], normalizedHost: string): SiteMatch | undefined {
+  for (const { site, domain } of here) {
+    const label = site.labels ? siteLabel(normalizedHost, domain) : "";
+
+    if (label && site.labels?.includes(label)) {
+      return { site, matched: label };
+    }
+  }
+
+  return undefined;
+}
+
+// The earliest site code in the name: a router is named for its own site before the far
+// end of the link it carries.
+function siteFromCode(here: SiteOnDomain[], tokens: string[]): SiteMatch | undefined {
+  for (const token of tokens) {
+    for (const { site } of here) {
+      if (site.codes?.includes(token) || site.prefixes?.some((prefix) => token.startsWith(prefix))) {
+        return { site, matched: token };
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function inferCityFromResearchSite(hostname: string, normalizedHost: string, tokens: string[]): GeoCandidate | undefined {
   const here = researchSites
     .map((site) => ({ site, domain: site.domains.find((entry) => normalizedHost.endsWith(entry)) }))
-    .filter((entry): entry is { site: ResearchSite; domain: string } => entry.domain !== undefined);
+    .filter((entry): entry is SiteOnDomain => entry.domain !== undefined);
 
   if (here.length === 0) {
     return undefined;
   }
 
-  const found = (site: ResearchSite, matched: string): GeoCandidate => ({
+  const match = siteFromLabel(here, normalizedHost) ?? siteFromCode(here, tokens);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const { site, matched } = match;
+
+  return {
     city: site.city,
     country: site.country,
     latitude: site.latitude,
@@ -761,30 +806,7 @@ function inferCityFromResearchSite(hostname: string, normalizedHost: string, tok
     evidence: [`reverse DNS matched "${matched}" in ${hostname}, ${site.network}'s own name for its ${site.city} site`],
     precision: "city",
     source: "reverse_dns"
-  });
-
-  // A site written where the network always writes it beats one read out of the middle.
-  for (const { site, domain } of here) {
-    const label = site.labels ? siteLabel(normalizedHost, domain) : "";
-
-    if (label && site.labels?.includes(label)) {
-      return found(site, label);
-    }
-  }
-
-  for (const token of tokens) {
-    for (const { site } of here) {
-      if (site.codes?.includes(token)) {
-        return found(site, token);
-      }
-
-      if (site.prefixes?.some((prefix) => token.startsWith(prefix))) {
-        return found(site, token);
-      }
-    }
-  }
-
-  return undefined;
+  };
 }
 
 function inferCityFromHostname(hostname?: string): GeoCandidate | undefined {
