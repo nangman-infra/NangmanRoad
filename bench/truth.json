@@ -1,32 +1,205 @@
 {
   "_comment": "Router naming conventions published by the operators themselves. Each entry maps a site code found in reverse DNS to the city that router stands in.",
   "codes": [
-    ["pdx\\d",        "Portland",      "Cogent"],
-    ["sfo\\d",        "San Francisco", "Cogent"],
-    ["sjc\\d",        "San Jose",      "Cogent"],
-    ["snjsca",        "San Jose",      "NTT"],
-    ["dllstx",        "Dallas",        "NTT"],
-    ["miamfl",        "Miami",         "NTT"],
-    ["lsanca",        "Los Angeles",   "NTT"],
-    ["tokyjp",        "Tokyo",         "NTT"],
-    ["nwrknj",        "Newark",        "NTT"],
-    ["chcgil",        "Chicago",       "NTT"],
-    ["\\blax\\b|lax-|lax\\d", "Los Angeles", "Telia/GTT/IIJ"],
-    ["\\bsjo-",       "San Jose",      "Telia"],
-    ["\\bden-",       "Denver",        "Telia"],
-    ["\\bnyk-",       "New York",      "Telia"],
-    ["\\bldn-",       "London",        "Telia"],
-    ["lond(hx|pg)",   "London",        "Jisc"],
-    ["London1",       "London",        "Level3"],
-    ["osk\\d",        "Osaka",         "IIJ"],
-    ["ams-\\d",       "Amsterdam",     "LeaseWeb"],
-    ["sg-eqxsg",      "Singapore",     "GSL/Equinix"],
-    ["ty-eqxty",      "Tokyo",         "GSL/Equinix"],
-    ["sea-drtsea",    "Seattle",       "GSL"],
-    ["chi-eqxch",     "Chicago",       "GSL/Equinix"],
-    ["\\.cg\\.",      "Calgary",       "Shaw"],
-    ["cpt\\d",        "Cape Town",     "TENET"],
-    ["saopaulo",      "Sao Paulo",     "IX.br"]
+    [
+      "pdx\\d",
+      "Portland",
+      "Cogent"
+    ],
+    [
+      "sfo\\d",
+      "San Francisco",
+      "Cogent"
+    ],
+    [
+      "sjc\\d",
+      "San Jose",
+      "Cogent"
+    ],
+    [
+      "snjsca",
+      "San Jose",
+      "NTT"
+    ],
+    [
+      "dllstx",
+      "Dallas",
+      "NTT"
+    ],
+    [
+      "miamfl",
+      "Miami",
+      "NTT"
+    ],
+    [
+      "lsanca",
+      "Los Angeles",
+      "NTT"
+    ],
+    [
+      "tokyjp",
+      "Tokyo",
+      "NTT"
+    ],
+    [
+      "nwrknj",
+      "Newark",
+      "NTT"
+    ],
+    [
+      "chcgil",
+      "Chicago",
+      "NTT"
+    ],
+    [
+      "\\blax\\b|lax-|lax\\d",
+      "Los Angeles",
+      "Telia/GTT/IIJ"
+    ],
+    [
+      "\\bsjo-",
+      "San Jose",
+      "Telia"
+    ],
+    [
+      "\\bden-",
+      "Denver",
+      "Telia"
+    ],
+    [
+      "\\bnyk-",
+      "New York",
+      "Telia"
+    ],
+    [
+      "\\bldn-",
+      "London",
+      "Telia"
+    ],
+    [
+      "lond(hx|pg)",
+      "London",
+      "Jisc"
+    ],
+    [
+      "London1",
+      "London",
+      "Level3"
+    ],
+    [
+      "osk\\d",
+      "Osaka",
+      "IIJ"
+    ],
+    [
+      "ams-\\d",
+      "Amsterdam",
+      "LeaseWeb"
+    ],
+    [
+      "sg-eqxsg",
+      "Singapore",
+      "GSL/Equinix"
+    ],
+    [
+      "ty-eqxty",
+      "Tokyo",
+      "GSL/Equinix"
+    ],
+    [
+      "sea-drtsea",
+      "Seattle",
+      "GSL"
+    ],
+    [
+      "chi-eqxch",
+      "Chicago",
+      "GSL/Equinix"
+    ],
+    [
+      "\\.cg\\.",
+      "Calgary",
+      "Shaw"
+    ],
+    [
+      "cpt\\d",
+      "Cape Town",
+      "TENET"
+    ],
+    [
+      "saopaulo",
+      "Sao Paulo",
+      "IX.br"
+    ],
+    [
+      "lond[a-z]{2}",
+      "London",
+      "Jisc"
+    ],
+    [
+      "manc[a-z]{2}",
+      "Manchester",
+      "Jisc"
+    ],
+    [
+      "cpr\\d",
+      "Curitiba",
+      "RNP"
+    ],
+    [
+      "bpr\\d",
+      "Curitiba",
+      "RNP"
+    ],
+    [
+      "csp\\d",
+      "Sao Paulo",
+      "RNP"
+    ],
+    [
+      "crj\\d",
+      "Rio de Janeiro",
+      "RNP"
+    ],
+    [
+      "cce\\d",
+      "Fortaleza",
+      "RNP"
+    ],
+    [
+      "cba\\d",
+      "Salvador",
+      "RNP"
+    ],
+    [
+      "ces\\d",
+      "Vitoria",
+      "RNP"
+    ],
+    [
+      "dur\\d",
+      "Durban",
+      "TENET"
+    ],
+    [
+      "jnb\\d",
+      "Johannesburg",
+      "TENET"
+    ],
+    [
+      "swiez",
+      "Zurich",
+      "SWITCH"
+    ]
   ],
-  "sameMetro": [["Newark", "New York City"], ["New York", "New York City"]]
+  "sameMetro": [
+    [
+      "Newark",
+      "New York City"
+    ],
+    [
+      "New York",
+      "New York City"
+    ]
+  ]
 }

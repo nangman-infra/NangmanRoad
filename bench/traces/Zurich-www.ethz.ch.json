@@ -1,0 +1,27 @@
+{
+  "city": "Zurich",
+  "country": "CH",
+  "target": "www.ethz.ch",
+  "probe": {
+    "continent": "EU",
+    "region": "Western Europe",
+    "country": "CH",
+    "state": null,
+    "city": "Zurich",
+    "asn": 31898,
+    "longitude": 8.55,
+    "latitude": 47.37,
+    "network": "Oracle",
+    "tags": [
+      "oci-eu-zurich-1",
+      "oci",
+      "eyeball-network",
+      "u-mikaeldui:zrh",
+      "u-mikaeldui:oci"
+    ],
+    "resolvers": [
+      "1.1.1.1"
+    ]
+  },
+  "raw": "traceroute to www.ethz.ch (129.132.19.216), 20 hops max, 60 byte packets\n 1  _gateway (140.91.210.7)  0.250 ms  0.194 ms\n 2  194.42.48.71 (194.42.48.71)  1.451 ms  1.429 ms\n 3  swiix3-10ge-0-0-0-22-1.switch.ch (194.42.48.11)  0.734 ms  0.805 ms\n 4  swiEZ2-B3.switch.ch (130.59.36.176)  2.569 ms  2.638 ms\n 5  192-33-92-1.net4.ethz.ch (192.33.92.1)  0.579 ms  0.633 ms\n 6  192-33-92-169.net4.ethz.ch (192.33.92.169)  0.849 ms  0.906 ms\n 7  www.ethz.ch (129.132.19.216)  0.498 ms  0.485 ms"
+}

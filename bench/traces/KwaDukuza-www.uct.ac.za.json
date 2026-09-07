@@ -1,0 +1,24 @@
+{
+  "city": "KwaDukuza",
+  "country": "ZA",
+  "target": "www.uct.ac.za",
+  "probe": {
+    "continent": "AF",
+    "region": "Southern Africa",
+    "country": "ZA",
+    "state": null,
+    "city": "KwaDukuza",
+    "asn": 327761,
+    "longitude": 31.29,
+    "latitude": -29.33,
+    "network": "Oxygn ISP",
+    "tags": [
+      "eyeball-network",
+      "u-kennyiv1199:watchtower"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.uct.ac.za (137.158.159.192), 20 hops max, 60 byte packets\n 1  _gateway (196.6.111.65)  0.184 ms  0.113 ms\n 2  100.64.254.233 (100.64.254.233)  0.263 ms  0.265 ms\n 3  tenet.dinx.net.za (196.223.30.33)  1.195 ms  1.171 ms\n 4  lt-1-1-0-0-dur3-pe1.net.tenet.ac.za (155.232.152.139)  2.911 ms  2.937 ms\n 5  et-0-1-1-0-isd1-pe1.net.tenet.ac.za (155.232.152.144)  7.740 ms  7.706 ms\n 6  et-1-1-4-0-cpt3-pe1.net.tenet.ac.za (155.232.1.148)  23.610 ms  23.612 ms\n 7  et-0-0-1-0-cpt7-pe1.net.tenet.ac.za (155.232.64.70)  23.346 ms  23.314 ms\n 8  154.114.124.1 (154.114.124.1)  23.385 ms  23.540 ms\n 9  * *\n10  * *\n11  * *\n12  * *\n13  * *\n14  * *\n15  * *\n16  * *\n17  * *\n18  * *\n19  * *\n20  * *"
+}

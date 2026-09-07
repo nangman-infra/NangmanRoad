@@ -1,0 +1,23 @@
+{
+  "city": "Milan",
+  "country": "IT",
+  "target": "www.unibo.it",
+  "probe": {
+    "continent": "EU",
+    "region": "Southern Europe",
+    "country": "IT",
+    "state": null,
+    "city": "Milan",
+    "asn": 63949,
+    "longitude": 9.19,
+    "latitude": 45.46,
+    "network": "Akamai Connected Cloud",
+    "tags": [
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.unibo.it (137.204.24.208), 20 hops max, 60 byte packets\n 1  _gateway (2.16.4.208)  0.234 ms  0.196 ms\n 2  192.168.193.171 (192.168.193.171)  0.329 ms  0.395 ms\n 3  192.168.192.28 (192.168.192.28)  0.270 ms  0.304 ms\n 4  192.168.235.22 (192.168.235.22)  0.230 ms  0.249 ms\n 5  192.168.200.40 (192.168.200.40)  1.270 ms  1.306 ms\n 6  garr.topix.it (194.116.96.25)  3.407 ms  3.401 ms\n 7  rl1-to01-rs1-to01.to01.garr.net (185.191.181.122)  3.494 ms  3.572 ms\n 8  185.191.181.119 (185.191.181.119)  2.841 ms  2.926 ms\n 9  rs1-mi02-rs1-mi01.mi01.garr.net (185.191.180.155)  3.097 ms  3.326 ms\n10  rs1-mi01-rl1-bo01.bo01.garr.net (185.191.180.50)  5.613 ms  5.607 ms\n11  rl1-bo01-ru-unibo.bo01.garr.net (193.206.128.126)  5.626 ms  5.596 ms\n12  137.204.2.201 (137.204.2.201)  8.977 ms  9.112 ms\n13  137.204.1.251 (137.204.1.251)  6.014 ms  6.149 ms\n14  * *\n15  * *\n16  * *\n17  * *\n18  * *\n19  * *\n20  * *"
+}

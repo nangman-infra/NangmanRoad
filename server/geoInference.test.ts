@@ -1072,3 +1072,56 @@ describe("measurementConfidence", () => {
     ])).toBe("low");
   });
 });
+
+// Every code here comes from a router name captured in a real traceroute for this project.
+describe("research network site codes", () => {
+  const cases: Array<[string, string, string]> = [
+    ["ae23.londtt-sbr1.ja.net", "London", "GB"],
+    ["ae28.londtw-sbr2.ja.net", "London", "GB"],
+    ["cpr1-csp2-tlb.bkb.rnp.br", "Curitiba", "BR"],
+    ["csp2-mia1-atl.bkb.rnp.br", "Sao Paulo", "BR"],
+    ["cba1-cce1-chesf.bkb.rnp.br", "Salvador", "BR"],
+    ["mia1-cmia2.bkb.rnp.br", "Miami", "US"],
+    ["et-1-1-4-0-cpt3-pe1.net.tenet.ac.za", "Cape Town", "ZA"],
+    ["lt-1-1-0-0-dur3-pe1.net.tenet.ac.za", "Durban", "ZA"],
+    ["et-0-1-4-0-jnb2-pe1.net.tenet.ac.za", "Johannesburg", "ZA"],
+    // The link names two ends; the label before the domain is the site the router stands in.
+    ["rs1-mi01-rl1-bo01.bo01.garr.net", "Bologna", "IT"],
+    ["rs1-rm02-rs1-mi02.mi02.garr.net", "Milan", "IT"],
+    ["rl1-to01-rs1-to01.to01.garr.net", "Turin", "IT"],
+    ["swiez2-b3.switch.ch", "Zurich", "CH"],
+    ["kar-rz-a99-hundredgige0-2-0-4.belwue.net", "Karlsruhe", "DE"],
+    ["as10881.curitiba.pr.ix.br", "Curitiba", "BR"],
+    ["as54113.akl.ix.nz", "Auckland", "NZ"],
+    ["ae1.mx1.lon2.uk.geant.net", "London", "GB"],
+    ["ae0.mx1.mil2.it.geant.net", "Milan", "IT"],
+    ["wnpg1rtr1.canarie.ca", "Winnipeg", "CA"],
+    ["kr-ham144-0.x-win.dfn.de", "Hamburg", "DE"]
+  ];
+
+  it.each(cases)("reads %s as %s", async (hostname, city, country) => {
+    process.env.GEOIP_PROVIDER = "none";
+    process.env.GEOIP_SECONDARY = "none";
+    resetGeoState();
+
+    const [hop] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "203.0.113.9", hostname, rttMs: 120, status: "ok" }] });
+
+    expect(hop.city).toBe(city);
+    expect(hop.country).toBe(country);
+    expect(hop.locationConfidence).toBe("high");
+    expect(hop.locationSource).toBe("reverse_dns");
+  });
+
+  it("keeps a code inside its own network's names", async () => {
+    process.env.GEOIP_PROVIDER = "none";
+    process.env.GEOIP_SECONDARY = "none";
+    resetGeoState();
+
+    // "cpt" is Cape Town for TENET and nothing anywhere else; "bo" is a GARR site label only.
+    const [tenet] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "203.0.113.9", hostname: "cpt3-pe1.example.net", rttMs: 120, status: "ok" }] });
+    const [garr] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "203.0.113.9", hostname: "rs1-bo01.bo01.example.com", rttMs: 120, status: "ok" }] });
+
+    expect(tenet.city).toBeUndefined();
+    expect(garr.city).toBeUndefined();
+  });
+});

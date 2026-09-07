@@ -1,0 +1,26 @@
+{
+  "city": "Sao Paulo",
+  "country": "BR",
+  "target": "www.ufpr.br",
+  "probe": {
+    "continent": "SA",
+    "region": "South America",
+    "country": "BR",
+    "state": null,
+    "city": "Sao Paulo",
+    "asn": 31898,
+    "longitude": -46.64,
+    "latitude": -23.55,
+    "network": "Oracle",
+    "tags": [
+      "oci-sa-saopaulo-1",
+      "oci",
+      "datacenter-network",
+      "u-gustavo-p-carvalho"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.ufpr.br (200.17.209.3), 20 hops max, 60 byte packets\n 1  _gateway (172.16.1.1)  0.061 ms  0.009 ms\n 2  140.91.208.124 (140.91.208.124)  0.338 ms  0.287 ms\n 3  200.25.58.23 (200.25.58.23)  1.543 ms  1.564 ms\n 4  ae200.2519.edge7.gru1.as7195.net (200.25.58.22)  1.528 ms  1.523 ms\n 5  ae610.0.edge1.cwb1.as7195.net (200.25.75.12)  11.929 ms  11.923 ms\n 6  as10881.curitiba.pr.ix.br (45.184.146.4)  13.141 ms  13.133 ms\n 7  200.238.139.18 (200.238.139.18)  51.418 ms  51.464 ms\n 8  200.19.74.126 (200.19.74.126)  10.072 ms  10.067 ms\n 9  * *\n10  www.ufpr.br (200.17.209.3)  12.040 ms *"
+}

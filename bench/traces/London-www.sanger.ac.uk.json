@@ -1,0 +1,25 @@
+{
+  "city": "London",
+  "country": "GB",
+  "target": "www.sanger.ac.uk",
+  "probe": {
+    "continent": "EU",
+    "region": "Northern Europe",
+    "country": "GB",
+    "state": null,
+    "city": "London",
+    "asn": 31898,
+    "longitude": -0.13,
+    "latitude": 51.51,
+    "network": "Oracle",
+    "tags": [
+      "oci-uk-london-1",
+      "oci",
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.sanger.ac.uk (193.62.203.105), 20 hops max, 60 byte packets\n 1  _gateway (140.91.200.72)  0.197 ms  0.151 ms\n 2  linxbgp1.iwscloud.com (195.66.226.34)  0.550 ms  0.534 ms\n 3  linx-gw1.ja.net (195.66.224.15)  0.806 ms  0.788 ms\n 4  ae23.londtt-sbr1.ja.net (146.97.35.169)  0.505 ms  0.529 ms\n 5  ae28.londtw-sbr2.ja.net (146.97.33.62)  0.765 ms  0.743 ms\n 6  ae30.londpg-sbr2.ja.net (146.97.33.5)  2.348 ms  2.326 ms\n 7  ae26.londpg-ban1.ja.net (146.97.35.234)  1.309 ms  1.286 ms\n 8  ae25.londpg-lar1.ja.net (146.97.36.46)  1.261 ms  1.238 ms\n 9  genome.londpg-lar1.ja.net (146.97.41.222)  2.822 ms  2.800 ms\n10  * *\n11  www.sanger.ac.uk (193.62.203.105)  3.212 ms  3.398 ms"
+}

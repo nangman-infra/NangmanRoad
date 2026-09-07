@@ -594,6 +594,199 @@ function aliasMatchesHostname(alias: string, normalizedHost: string, tokens: str
   return normalizedHost.includes(alias) || normalizedHost.includes(compactAlias);
 }
 
+// National research and education networks name their routers after their own points of
+// presence, so the name is the operator saying where the router stands. Every code below
+// comes from a traceroute captured for this project or from CAIDA's published router
+// naming conventions; none is guessed. A code counts only inside its own network's domain,
+// so two and three letter codes can never leak into another operator's names, and the
+// earliest code in a name wins because a router is named for its own site before the far
+// end of the link it carries.
+interface ResearchSite extends GeoPoint {
+  network: string;
+  domains: string[];
+  // A whole token once digits are stripped: "csp2" is "csp".
+  codes?: string[];
+  // The start of a token: Jisc writes London as "londpg", "londtt", "londhx".
+  prefixes?: string[];
+  // The label right before the domain, where the network puts the site there: GARR's
+  // "rs1-mi01-rl1-bo01.bo01.garr.net" is a Bologna router, whatever the link is called.
+  labels?: string[];
+}
+
+const researchSites: ResearchSite[] = [
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["lond"], city: "London", country: "GB", latitude: 51.5072, longitude: -0.1276 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["manc"], city: "Manchester", country: "GB", latitude: 53.4808, longitude: -2.2426 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["leed"], city: "Leeds", country: "GB", latitude: 53.79, longitude: -1.55 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["camb"], city: "Cambridge", country: "GB", latitude: 52.2, longitude: 0.12 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["live"], city: "Liverpool", country: "GB", latitude: 53.41, longitude: -2.96 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["nott"], city: "Nottingham", country: "GB", latitude: 52.94, longitude: -1.17 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["oxfo"], city: "Oxford", country: "GB", latitude: 51.75, longitude: -1.25 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["read"], city: "Reading", country: "GB", latitude: 51.47, longitude: -0.98 },
+  { network: "Jisc (Janet)", domains: ["ja.net"], prefixes: ["brad"], city: "Bradford", country: "GB", latitude: 53.79, longitude: -1.75 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bsp", "csp"], labels: ["pop-sp"], city: "Sao Paulo", country: "BR", latitude: -23.5505, longitude: -46.6333 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["brj", "crj"], labels: ["pop-rj"], city: "Rio de Janeiro", country: "BR", latitude: -22.9068, longitude: -43.1729 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bpr", "cpr"], labels: ["pop-pr"], city: "Curitiba", country: "BR", latitude: -25.42, longitude: -49.32 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bdf", "cdf"], labels: ["pop-df"], city: "Brasilia", country: "BR", latitude: -15.78, longitude: -47.92 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["brs", "crs"], labels: ["pop-rs"], city: "Porto Alegre", country: "BR", latitude: -30.05, longitude: -51.2 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bmg", "cmg"], labels: ["pop-mg"], city: "Belo Horizonte", country: "BR", latitude: -19.91, longitude: -43.92 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bba", "cba"], labels: ["pop-ba"], city: "Salvador", country: "BR", latitude: -12.97, longitude: -38.48 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bpe", "cpe"], labels: ["pop-pe"], city: "Recife", country: "BR", latitude: -8.06, longitude: -34.91 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bce", "cce"], labels: ["pop-ce"], city: "Fortaleza", country: "BR", latitude: -3.75, longitude: -38.58 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bsc", "csc"], labels: ["pop-sc"], city: "Florianopolis", country: "BR", latitude: -27.58, longitude: -48.52 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bpa", "cpa"], labels: ["pop-pa"], city: "Belem", country: "BR", latitude: -1.45, longitude: -48.48 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bam", "cam"], labels: ["pop-am"], city: "Manaus", country: "BR", latitude: -3.1, longitude: -60.0 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bes", "ces"], labels: ["pop-es"], city: "Vitoria", country: "BR", latitude: -20.33, longitude: -40.35 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bgo", "cgo"], labels: ["pop-go"], city: "Goiania", country: "BR", latitude: -16.72, longitude: -49.3 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["brn", "crn"], labels: ["pop-rn"], city: "Natal", country: "BR", latitude: -5.78, longitude: -35.24 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bpb", "cpb"], labels: ["pop-pb"], city: "Joao Pessoa", country: "BR", latitude: -7.1, longitude: -34.88 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bal", "cal"], labels: ["pop-al"], city: "Maceio", country: "BR", latitude: -9.62, longitude: -35.73 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bse", "cse"], labels: ["pop-se"], city: "Aracaju", country: "BR", latitude: -10.9, longitude: -37.12 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bpi", "cpi"], labels: ["pop-pi"], city: "Teresina", country: "BR", latitude: -5.09, longitude: -42.78 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bma", "cma"], labels: ["pop-ma"], city: "Sao Luis", country: "BR", latitude: -2.51, longitude: -44.27 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bmt", "cmt"], labels: ["pop-mt"], city: "Cuiaba", country: "BR", latitude: -15.57, longitude: -56.09 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bms", "cms"], labels: ["pop-ms"], city: "Campo Grande", country: "BR", latitude: -20.45, longitude: -54.62 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bto", "cto"], labels: ["pop-to"], city: "Palmas", country: "BR", latitude: -10.24, longitude: -48.29 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bro", "cro"], labels: ["pop-ro"], city: "Porto Velho", country: "BR", latitude: -8.75, longitude: -63.9 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bac", "cac"], labels: ["pop-ac"], city: "Rio Branco", country: "BR", latitude: -9.97, longitude: -67.8 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["brr", "crr"], labels: ["pop-rr"], city: "Boa Vista", country: "BR", latitude: 2.82, longitude: -60.67 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["bap", "cap"], labels: ["pop-ap"], city: "Macapa", country: "BR", latitude: 0.03, longitude: -51.05 },
+  { network: "RNP", domains: ["rnp.br"], codes: ["cmia", "mia"], city: "Miami", country: "US", latitude: 25.7617, longitude: -80.1918 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["curitiba"], city: "Curitiba", country: "BR", latitude: -25.42, longitude: -49.32 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["saopaulo"], city: "Sao Paulo", country: "BR", latitude: -23.5505, longitude: -46.6333 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["riodejaneiro"], city: "Rio de Janeiro", country: "BR", latitude: -22.9068, longitude: -43.1729 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["portoalegre"], city: "Porto Alegre", country: "BR", latitude: -30.05, longitude: -51.2 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["belohorizonte"], city: "Belo Horizonte", country: "BR", latitude: -19.91, longitude: -43.92 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["brasilia"], city: "Brasilia", country: "BR", latitude: -15.78, longitude: -47.92 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["fortaleza"], city: "Fortaleza", country: "BR", latitude: -3.75, longitude: -38.58 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["recife"], city: "Recife", country: "BR", latitude: -8.06, longitude: -34.91 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["salvador"], city: "Salvador", country: "BR", latitude: -12.97, longitude: -38.48 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["florianopolis"], city: "Florianopolis", country: "BR", latitude: -27.58, longitude: -48.52 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["manaus"], city: "Manaus", country: "BR", latitude: -3.1, longitude: -60.0 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["belem"], city: "Belem", country: "BR", latitude: -1.45, longitude: -48.48 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["vitoria"], city: "Vitoria", country: "BR", latitude: -20.33, longitude: -40.35 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["goiania"], city: "Goiania", country: "BR", latitude: -16.72, longitude: -49.3 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["natal"], city: "Natal", country: "BR", latitude: -5.78, longitude: -35.24 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["maceio"], city: "Maceio", country: "BR", latitude: -9.62, longitude: -35.73 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["teresina"], city: "Teresina", country: "BR", latitude: -5.09, longitude: -42.78 },
+  { network: "IX.br", domains: ["ix.br"], codes: ["cuiaba"], city: "Cuiaba", country: "BR", latitude: -15.57, longitude: -56.09 },
+  { network: "TENET", domains: ["tenet.ac.za"], codes: ["cpt"], city: "Cape Town", country: "ZA", latitude: -33.9249, longitude: 18.4241 },
+  { network: "TENET", domains: ["tenet.ac.za"], codes: ["jnb"], city: "Johannesburg", country: "ZA", latitude: -26.2041, longitude: 28.0473 },
+  { network: "TENET", domains: ["tenet.ac.za"], codes: ["dur"], city: "Durban", country: "ZA", latitude: -29.86, longitude: 31.01 },
+  { network: "GARR", domains: ["garr.net"], labels: ["mi"], city: "Milan", country: "IT", latitude: 45.4642, longitude: 9.19 },
+  { network: "GARR", domains: ["garr.net"], labels: ["rm"], city: "Rome", country: "IT", latitude: 41.9028, longitude: 12.4964 },
+  { network: "GARR", domains: ["garr.net"], labels: ["bo"], city: "Bologna", country: "IT", latitude: 44.5, longitude: 11.34 },
+  { network: "GARR", domains: ["garr.net"], labels: ["to"], city: "Turin", country: "IT", latitude: 45.07, longitude: 7.67 },
+  { network: "GARR", domains: ["garr.net"], labels: ["na"], city: "Naples", country: "IT", latitude: 40.84, longitude: 14.24 },
+  { network: "GARR", domains: ["garr.net"], labels: ["fi"], city: "Florence", country: "IT", latitude: 43.78, longitude: 11.25 },
+  { network: "GARR", domains: ["garr.net"], labels: ["ge"], city: "Genoa", country: "IT", latitude: 44.41, longitude: 8.93 },
+  { network: "GARR", domains: ["garr.net"], labels: ["ba"], city: "Bari", country: "IT", latitude: 41.11, longitude: 16.87 },
+  { network: "GARR", domains: ["garr.net"], labels: ["pa"], city: "Palermo", country: "IT", latitude: 38.13, longitude: 13.35 },
+  { network: "GARR", domains: ["garr.net"], labels: ["ct"], city: "Catania", country: "IT", latitude: 37.5, longitude: 15.08 },
+  { network: "GARR", domains: ["garr.net"], labels: ["ca"], city: "Cagliari", country: "IT", latitude: 39.22, longitude: 9.1 },
+  { network: "GARR", domains: ["garr.net"], labels: ["ve"], city: "Venice", country: "IT", latitude: 45.44, longitude: 12.33 },
+  { network: "GARR", domains: ["garr.net"], labels: ["ts"], city: "Trieste", country: "IT", latitude: 45.65, longitude: 13.8 },
+  { network: "GARR", domains: ["garr.net"], labels: ["pi"], city: "Pisa", country: "IT", latitude: 43.72, longitude: 10.4 },
+  { network: "GARR", domains: ["garr.net"], labels: ["pg"], city: "Perugia", country: "IT", latitude: 43.11, longitude: 12.39 },
+  { network: "GARR", domains: ["garr.net"], labels: ["tn"], city: "Trento", country: "IT", latitude: 46.08, longitude: 11.12 },
+  { network: "SWITCH", domains: ["switch.ch"], codes: ["swiez", "swiix"], city: "Zurich", country: "CH", latitude: 47.3769, longitude: 8.5417 },
+  { network: "BelWue", domains: ["belwue.net"], codes: ["kar"], city: "Karlsruhe", country: "DE", latitude: 49.0, longitude: 8.4 },
+  { network: "BelWue", domains: ["belwue.net"], codes: ["stu"], city: "Stuttgart", country: "DE", latitude: 48.78, longitude: 9.2 },
+  { network: "BelWue", domains: ["belwue.net"], codes: ["hdlrz"], city: "Heidelberg", country: "DE", latitude: 49.42, longitude: 8.7 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["ath"], city: "Athens", country: "GR", latitude: 37.99, longitude: 23.73 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["lon"], city: "London", country: "GB", latitude: 51.5072, longitude: -0.1276 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["mil"], city: "Milan", country: "IT", latitude: 45.4642, longitude: 9.19 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["bra"], city: "Bratislava", country: "SK", latitude: 48.15, longitude: 17.12 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["bud"], city: "Budapest", country: "HU", latitude: 47.5, longitude: 19.08 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["gen"], city: "Geneva", country: "CH", latitude: 46.21, longitude: 6.14 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["par"], city: "Paris", country: "FR", latitude: 48.8566, longitude: 2.3522 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["poz"], city: "Poznan", country: "PL", latitude: 52.41, longitude: 16.9 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["pra"], city: "Prague", country: "CZ", latitude: 50.09, longitude: 14.42 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["dub"], city: "Dublin", country: "IE", latitude: 53.35, longitude: -6.26 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["ams"], city: "Amsterdam", country: "NL", latitude: 52.35, longitude: 4.91 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["fra"], city: "Frankfurt", country: "DE", latitude: 50.1, longitude: 8.68 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["vie"], city: "Vienna", country: "AT", latitude: 48.2, longitude: 16.36 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["mad"], city: "Madrid", country: "ES", latitude: 40.4, longitude: -3.69 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["lis"], city: "Lisbon", country: "PT", latitude: 38.72, longitude: -9.15 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["bru"], city: "Brussels", country: "BE", latitude: 50.84, longitude: 4.33 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["cop"], city: "Copenhagen", country: "DK", latitude: 55.6761, longitude: 12.5683 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["ham"], city: "Hamburg", country: "DE", latitude: 53.55, longitude: 10.0 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["mar"], city: "Marseille", country: "FR", latitude: 43.29, longitude: 5.37 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["zag"], city: "Zagreb", country: "HR", latitude: 45.8, longitude: 16.0 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["buc"], city: "Bucharest", country: "RO", latitude: 44.44, longitude: 26.1 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["sof"], city: "Sofia", country: "BG", latitude: 42.69, longitude: 23.31 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["tal"], city: "Tallinn", country: "EE", latitude: 59.43, longitude: 24.73 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["rig"], city: "Riga", country: "LV", latitude: 56.95, longitude: 24.1 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["vil"], city: "Vilnius", country: "LT", latitude: 54.68, longitude: 25.32 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["hel"], city: "Helsinki", country: "FI", latitude: 60.16, longitude: 24.93 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["osl"], city: "Oslo", country: "NO", latitude: 59.92, longitude: 10.75 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["sto"], city: "Stockholm", country: "SE", latitude: 59.32, longitude: 18.07 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["lju"], city: "Ljubljana", country: "SI", latitude: 46.06, longitude: 14.51 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["lux"], city: "Luxembourg", country: "LU", latitude: 49.61, longitude: 6.13 },
+  { network: "GEANT", domains: ["geant.net"], codes: ["ist"], city: "Istanbul", country: "TR", latitude: 41.02, longitude: 28.97 },
+  { network: "CANARIE", domains: ["canarie.ca"], codes: ["otwa"], city: "Ottawa", country: "CA", latitude: 45.42, longitude: -75.7 },
+  { network: "CANARIE", domains: ["canarie.ca"], codes: ["vctr"], city: "Victoria", country: "CA", latitude: 48.43, longitude: -123.35 },
+  { network: "CANARIE", domains: ["canarie.ca"], codes: ["wnpg"], city: "Winnipeg", country: "CA", latitude: 49.88, longitude: -97.17 },
+  { network: "CANARIE", domains: ["canarie.ca"], codes: ["hlfx"], city: "Halifax", country: "CA", latitude: 44.65, longitude: -63.6 },
+  { network: "CANARIE", domains: ["canarie.ca"], codes: ["clgr"], city: "Calgary", country: "CA", latitude: 51.08, longitude: -114.08 },
+  { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["ham"], city: "Hamburg", country: "DE", latitude: 53.55, longitude: 10.0 },
+  { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["lei"], city: "Leipzig", country: "DE", latitude: 51.34, longitude: 12.41 },
+  { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["che"], city: "Chemnitz", country: "DE", latitude: 50.83, longitude: 12.92 },
+  { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["dor"], city: "Dortmund", country: "DE", latitude: 51.53, longitude: 7.45 },
+  { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["wue"], city: "Wurzburg", country: "DE", latitude: 49.8, longitude: 9.95 },
+  { network: "IX New Zealand", domains: ["ix.nz"], codes: ["akl"], city: "Auckland", country: "NZ", latitude: -36.8485, longitude: 174.7633 },
+];
+
+// The label immediately before the network's own domain, digits stripped.
+function siteLabel(normalizedHost: string, domain: string) {
+  const head = normalizedHost.slice(0, Math.max(0, normalizedHost.length - domain.length - 1));
+
+  return removeLeadingTrailingDigits(head.split(".").at(-1) ?? "");
+}
+
+function inferCityFromResearchSite(hostname: string, normalizedHost: string, tokens: string[]): GeoCandidate | undefined {
+  const here = researchSites
+    .map((site) => ({ site, domain: site.domains.find((entry) => normalizedHost.endsWith(entry)) }))
+    .filter((entry): entry is { site: ResearchSite; domain: string } => entry.domain !== undefined);
+
+  if (here.length === 0) {
+    return undefined;
+  }
+
+  const found = (site: ResearchSite, matched: string): GeoCandidate => ({
+    city: site.city,
+    country: site.country,
+    latitude: site.latitude,
+    longitude: site.longitude,
+    confidence: "high",
+    evidence: [`reverse DNS matched "${matched}" in ${hostname}, ${site.network}'s own name for its ${site.city} site`],
+    precision: "city",
+    source: "reverse_dns"
+  });
+
+  // A site written where the network always writes it beats one read out of the middle.
+  for (const { site, domain } of here) {
+    const label = site.labels ? siteLabel(normalizedHost, domain) : "";
+
+    if (label && site.labels?.includes(label)) {
+      return found(site, label);
+    }
+  }
+
+  for (const token of tokens) {
+    for (const { site } of here) {
+      if (site.codes?.includes(token)) {
+        return found(site, token);
+      }
+
+      if (site.prefixes?.some((prefix) => token.startsWith(prefix))) {
+        return found(site, token);
+      }
+    }
+  }
+
+  return undefined;
+}
+
 function inferCityFromHostname(hostname?: string): GeoCandidate | undefined {
   if (!hostname) {
     return undefined;
@@ -601,6 +794,11 @@ function inferCityFromHostname(hostname?: string): GeoCandidate | undefined {
 
   const normalizedHost = compactWhitespace(hostname.toLowerCase());
   const tokens = tokeniseHostname(hostname);
+  const research = inferCityFromResearchSite(hostname, normalizedHost, tokens);
+
+  if (research) {
+    return research;
+  }
 
   for (const city of cityHints) {
     // A carrier's site codes mean something only in that carrier's own names.
@@ -2005,7 +2203,9 @@ function nearestAnchorHop(hops: HopResult[], startIndex: number, step: -1 | 1) {
   return undefined;
 }
 
-function fillFromRttNeighbors(hops: HopResult[]): HopResult[] {
+function fillFromRttNeighbors(hops: HopResult[], source?: GeoPoint): HopResult[] {
+  const probe = anchorHop(source);
+
   return hops.map((hop, index) => {
     const rttMs = hopRtt(hop);
 
@@ -2021,7 +2221,13 @@ function fillFromRttNeighbors(hops: HopResult[]): HopResult[] {
       .filter((entry) => entry.delta <= RTT_NEIGHBOR_TOLERANCE_MS)
       .sort((a, b) => a.delta - b.delta)[0]?.candidate;
 
-    if (!anchor) {
+    const point = anchor ? locatedPointFromHop(anchor) : undefined;
+
+    // The probe's own distance still bounds the hop. A router answering the probe in a
+    // millisecond is not in the next city, however close in latency its neighbour is:
+    // the first hops of a Milan probe answer at once and were inheriting Turin, the first
+    // city named further along.
+    if (!anchor || !point || (probe && farFromProbe({ index, point, latencyMs: rttMs, hop }, probe))) {
       return hop;
     }
 
@@ -2076,7 +2282,8 @@ export async function enrichHopsWithGeo(params: {
       dropImpossiblePlacements(stabilizeRouteLocations(enrichedHops.map((entry) => entry.hop)), source),
       enrichedHops.map((entry) => entry.alternatives),
       source
-    )
+    ),
+    source
   ).map((hop) => {
     const network = networkRecord(hop.asn);
 
