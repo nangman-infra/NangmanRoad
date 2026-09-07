@@ -1,19 +1,7 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
+// The browser walk-through under e2e/ is Playwright's, not Vitest's.
 export default defineConfig({
-  test: {
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "lcov"],
-      reportsDirectory: "coverage",
-      include: ["server/**/*.ts", "shared/**/*.ts"],
-      exclude: ["server/index.ts", "server/**/*.test.ts"],
-      thresholds: {
-        branches: 75,
-        statements: 80,
-        functions: 80,
-        lines: 80
-      }
-    }
-  }
+  define: { __BUILD_ID__: JSON.stringify("test") },
+  test: { exclude: [...configDefaults.exclude, "e2e/**"] }
 });

@@ -11,28 +11,36 @@
     "build:web": "vite build",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/index.js",
     "check": "tsc -p tsconfig.json --noEmit",
+    "data:refresh": "tsx scripts/refresh-data.mts",
+    "test:e2e": "playwright test",
     "test": "vitest run --coverage",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node dist-server/index.js"
   },
   "dependencies": {
+    "@types/compression": "^1.8.1",
     "@types/leaflet": "^1.9.21",
     "@vitejs/plugin-react": "^4.3.4",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "framer-motion": "^11.15.0",
+    "globe.gl": "^2.46.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.469.0",
     "nanoid": "^5.0.9",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.185.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.185.0",
     "@vitest/coverage-v8": "^4.1.9",
     "autoprefixer": "^10.4.20",
     "esbuild": "^0.28.1",
@@ -42,5 +50,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "qs": "^6.15.4"
   }
 }
