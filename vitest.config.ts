@@ -1,7 +1,23 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
-// The browser walk-through under e2e/ is Playwright's, not Vitest's.
 export default defineConfig({
   define: { __BUILD_ID__: JSON.stringify("test") },
-  test: { exclude: [...configDefaults.exclude, "e2e/**"] }
+  test: {
+    // The browser walk-through under e2e/ is Playwright's, not Vitest's.
+    exclude: [...configDefaults.exclude, "e2e/**"],
+    coverage: {
+      provider: "v8",
+      // lcov is what SonarQube reads; without it the quality gate sees no coverage at all.
+      reporter: ["text", "lcov"],
+      reportsDirectory: "coverage",
+      include: ["server/**/*.ts", "shared/**/*.ts"],
+      exclude: ["server/index.ts", "server/**/*.test.ts", "shared/**/*.test.ts"],
+      thresholds: {
+        branches: 75,
+        statements: 80,
+        functions: 80,
+        lines: 80
+      }
+    }
+  }
 });
