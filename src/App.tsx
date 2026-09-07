@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Map as MapIcon, Moon, Sun, Terminal } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ExternalLink, Mail, Map as MapIcon, Moon, Sun, Terminal, Users } from "lucide-react";
 import type {
   HopResult,
   MeasurementEvent,
@@ -7,12 +7,17 @@ import type {
   MeasurementStatus,
   TraceMode
 } from "../shared/types";
+import { PROBE_LOCATIONS, countryFlag } from "../shared/probes";
 import { createMeasurement, openMeasurementEvents } from "./api";
 import { AppShell, type JourneyState, type ThemeMode } from "./components/AppShell";
-import { RouteVisualization } from "./components/RouteVisualization";
+import { RouteVisualization, prepareRouteLegs } from "./components/RouteVisualization";
+import { warmRouter } from "./lib/routeClient";
 import { TerminalOutput } from "./components/TerminalOutput";
+import { LANG_STORAGE_KEY, LangContext, detectLang, setCurrentLang, t, type Lang } from "./lib/i18n";
 
 const initialTarget = "";
+const CONTACT_EMAIL = "heishooni@gmail.com";
+const TEAM_SITE = "https://nangman.cloud";
 const themeStorageKey = "nangman-road-theme";
 const minimumJourneyDurationMs = 1900;
 
@@ -119,6 +124,7 @@ function journeyStateFor(params: {
 export function App() {
   const [target, setTarget] = useState(initialTarget);
   const [mode, setMode] = useState<TraceMode>("traceout");
+  const [probe, setProbe] = useState("auto");
   const [status, setStatus] = useState<MeasurementStatus>("idle");
   const [result, setResult] = useState<MeasurementResult | undefined>();
   const [hops, setHops] = useState<HopResult[]>([]);
@@ -126,7 +132,52 @@ export function App() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isJourneyLaunching, setIsJourneyLaunching] = useState(false);
   const [resultView, setResultView] = useState<"map" | "terminal">("map");
+  // The globe is built at page load and the result waits for it: a longer wait on the
+  // probe screen, never a stutter when the map appears. A globe that cannot be built
+  // (no WebGL) or takes too long stops holding the result up.
+  const [globeReady, setGlobeReady] = useState(false);
+
+  useEffect(() => {
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        setGlobeReady(true);
+      }
+    };
+    const timer = setTimeout(settle, 20_000);
+    warmRouter();
+
+    import("./components/GlobeView")
+      .then((module) => module.globeReady())
+      .then(settle, settle);
+
+    return () => clearTimeout(timer);
+  }, []);
   const [theme, setTheme] = useState<ThemeMode>(storedTheme);
+  // Set for the plain functions before anything renders in it, then kept in state so the
+  // page re-renders in the new language.
+  const [lang, setLangState] = useState<Lang>(() => {
+    const initial = detectLang();
+
+    setCurrentLang(initial);
+
+    return initial;
+  });
+  const setLang = (next: Lang) => {
+    setCurrentLang(next);
+    setLangState(next);
+
+    try {
+      globalThis.localStorage.setItem(LANG_STORAGE_KEY, next);
+    } catch {
+      // Storage disabled: the choice lasts for the visit.
+    }
+  };
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
   const closeEventsRef = useRef<(() => void) | undefined>();
   const journeyStartedAtRef = useRef(0);
   const journeyReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>();
@@ -199,10 +250,17 @@ export function App() {
     }, delay);
   }
 
-  async function start() {
+  // A probe named here re-measures the same target from it, as the result's own control does.
+  async function start(from?: string) {
     if (!target.trim()) {
-      setError("Enter a domain or IP address.");
+      setError(t("search.empty"));
       return;
+    }
+
+    const origin = from ?? probe;
+
+    if (from) {
+      setProbe(from);
     }
 
     closeEventsRef.current?.();
@@ -225,6 +283,7 @@ export function App() {
       const measurement = await createMeasurement({
         target,
         mode,
+        from: origin === "auto" ? undefined : origin,
         visitor: {
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           locale: navigator.language
@@ -235,7 +294,10 @@ export function App() {
         measurement.id,
         handleEvent,
         (message) => {
-          setError(message);
+          // The server closes the stream right after reporting why a measurement failed, so a
+          // disconnect that follows a real error is the expected end of it, not a new problem.
+          // Overwriting the reason with "the stream disconnected" loses the one useful message.
+          setError((current) => current ?? message);
           setIsJourneyLaunching(false);
           setStatus((current) => (current === "finished" ? current : "error"));
         }
@@ -243,7 +305,7 @@ export function App() {
     } catch (error_) {
       setStatus("error");
       releaseJourneyAfterMinimum();
-      setError(error_ instanceof Error ? error_.message : "Unable to start measurement.");
+      setError(error_ instanceof Error ? error_.message : t("search.startFailed"));
     }
   }
 
@@ -266,7 +328,34 @@ export function App() {
   }
 
   const isBusy = isBusyStatus(status);
-  const shouldShowResult = hasSearched && (status === "finished" || status === "error");
+  // The final route is routed and placed on the globe before the result is shown, so the
+  // reveal itself builds nothing; earlier hops are routed as they arrive.
+  const [routePrepared, setRoutePrepared] = useState(false);
+  const shouldShowResult = hasSearched && ((status === "finished" && routePrepared) || status === "error") && globeReady;
+
+  useEffect(() => {
+    if (hops.length === 0 || (status !== "running" && status !== "finished")) {
+      return;
+    }
+
+    let stale = false;
+
+    if (status === "finished") {
+      setRoutePrepared(false);
+    }
+
+    prepareRouteLegs({ hops, target, source: latestResult?.source, reachedTarget: latestResult?.reachedTarget })
+      .catch(() => undefined)
+      .then(() => {
+        if (!stale && status === "finished") {
+          setRoutePrepared(true);
+        }
+      });
+
+    return () => {
+      stale = true;
+    };
+  }, [hops, status, target, latestResult]);
   const shouldDisplayResult = shouldShowResult && !isJourneyLaunching;
   const journeyState = journeyStateFor({
     hasSearched,
@@ -284,7 +373,7 @@ export function App() {
     <section className="flex flex-1 flex-col items-center justify-center pb-20">
       <div className="theme-eyebrow mb-10 flex items-center gap-3">
         <NetworkMark className="theme-network-mark h-5 w-5" />
-        <span className="text-xs uppercase tracking-[0.34em]">Network route search</span>
+        <span className="text-xs uppercase tracking-[0.34em]">{t("search.eyebrow")}</span>
       </div>
       <h1 className="theme-title text-center text-5xl font-semibold tracking-normal sm:text-7xl">
         Nangman Road
@@ -292,10 +381,12 @@ export function App() {
       <SearchForm
         target={target}
         mode={mode}
+        probe={probe}
         error={error}
         disabled={isBusy}
         onTargetChange={setTarget}
         onModeChange={setMode}
+        onProbeChange={setProbe}
         onSubmit={start}
       />
     </section>
@@ -304,7 +395,7 @@ export function App() {
   if (shouldDisplayResult) {
     pageContent = (
       <section className="route-result-shell flex min-h-[calc(100dvh-1.5rem)] flex-col">
-        <header className="result-topbar mb-3 flex items-center justify-between">
+        <header className="result-topbar mb-3 flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
             onClick={reset}
@@ -313,6 +404,23 @@ export function App() {
             <NetworkMark className="theme-network-mark h-4 w-4" />
             Nangman Road
           </button>
+          <label className="result-rerun inline-flex items-center gap-2 text-xs">
+            <span className="theme-probe-caption hidden uppercase tracking-[0.2em] sm:inline">{t("header.rerun")}</span>
+            <select
+              value={probe}
+              disabled={isBusy}
+              aria-label={t("header.rerun")}
+              onChange={(event) => void start(event.target.value)}
+              className="result-view-toggle rounded-full border px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="auto">{t("search.nearest")}</option>
+              {PROBE_LOCATIONS.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {countryFlag(location.country)} {location.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => setResultView((current) => (current === "map" ? "terminal" : "map"))}
@@ -321,14 +429,14 @@ export function App() {
             {resultView === "map" ? (
               <>
                 <Terminal className="h-4 w-4" aria-hidden="true" />
-                Terminal result
+                {t("header.terminal")}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </>
             ) : (
               <>
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                 <MapIcon className="h-4 w-4" aria-hidden="true" />
-                Route map
+                {t("header.map")}
               </>
             )}
           </button>
@@ -337,12 +445,14 @@ export function App() {
         <div className="result-stage flex min-h-0 flex-1">
           {resultView === "map" ? (
             <RouteVisualization
+              reachedTarget={latestResult?.reachedTarget}
               mode={mode}
               status={status}
               target={target}
               hops={hops}
               source={latestResult?.source}
               theme={theme}
+              error={error}
             />
           ) : (
             <TerminalOutput
@@ -369,10 +479,24 @@ export function App() {
   }
 
   return (
-    <AppShell journeyState={journeyState} theme={theme}>
-      <main className={mainClassName}>{pageContent}</main>
-      <ThemeToggle theme={theme} onChange={setTheme} />
-    </AppShell>
+    <LangContext.Provider value={{ lang, setLang }}>
+      <AppShell journeyState={journeyState} theme={theme}>
+        <main className={mainClassName}>{pageContent}</main>
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2">
+          <CornerPopovers />
+          <button
+            type="button"
+            aria-label={t("lang.toggle")}
+            title={t("lang.toggle")}
+            onClick={() => setLang(lang === "ko" ? "en" : "ko")}
+            className="theme-toggle theme-toggle-button inline-flex h-12 items-center justify-center rounded-full border px-4 text-sm font-semibold shadow-2xl backdrop-blur"
+          >
+            {lang === "ko" ? "KR" : "EN"}
+          </button>
+          <ThemeToggle theme={theme} onChange={setTheme} />
+        </div>
+      </AppShell>
+    </LangContext.Provider>
   );
 }
 
@@ -399,7 +523,9 @@ function formatCountryLabel(country?: string) {
 }
 
 function formatSourceLabel(source: MeasurementResult["source"]) {
-  return [source.city, formatCountryLabel(source.country)].filter(Boolean).join(", ") || "nearby network probe";
+  const place = [source.city, formatCountryLabel(source.country)].filter(Boolean).join(", ");
+
+  return place ? `${place}${source.network ? ` · ${source.network}` : ""}` : undefined;
 }
 
 function JourneyLaunchStage({
@@ -413,22 +539,19 @@ function JourneyLaunchStage({
   sourceLabel?: string;
   target: string;
 }>) {
-  const sourceCopy =
-    sourceLabel && sourceLabel !== "nearby network probe"
-      ? `Measured from ${sourceLabel} probe`
-      : "Selecting a nearby network probe";
+  const sourceCopy = sourceLabel ? t("launch.measuredFrom", { probe: sourceLabel }) : t("launch.selecting");
 
   return (
     <section className="journey-launch-stage flex flex-1 items-center justify-center">
       <div className="journey-scan-lockup" aria-live="polite">
         <div className="journey-launch-copy">
           <p className="text-xs uppercase tracking-[0.26em]">
-            {mode === "mtr" ? "Monitoring route" : "Tracing route"}
+            {mode === "mtr" ? t("launch.monitoring") : t("launch.tracing")}
           </p>
           <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">{target}</h2>
           <p className="mt-3 text-sm">{sourceCopy}</p>
           <p className="journey-launch-status mt-2 text-xs">
-            {hopCount > 0 ? `${hopCount} hops received. Preparing final view.` : "Searching the route."}
+            {hopCount > 0 ? t("launch.received", { n: hopCount }) : t("launch.searching")}
           </p>
         </div>
       </div>
@@ -439,26 +562,54 @@ function JourneyLaunchStage({
 type SearchFormProps = Readonly<{
   target: string;
   mode: TraceMode;
+  probe: string;
   disabled: boolean;
   compact?: boolean;
   error?: string;
   onTargetChange: (value: string) => void;
   onModeChange: (mode: TraceMode) => void;
+  onProbeChange: (probe: string) => void;
   onSubmit: () => void;
 }>;
 
 function SearchForm({
   target,
   mode,
+  probe,
   disabled,
   compact = false,
   error,
   onTargetChange,
   onModeChange,
+  onProbeChange,
   onSubmit
 }: Readonly<SearchFormProps>) {
   const [isInputFocused, setIsInputFocused] = useState(false);
+  // The option list is an OS popup outside the page, so picking an entry delivers no
+  // mousemove and :hover stays stuck on until the pointer is nudged. Dropping pointer
+  // events for that one moment makes the browser re-run hit testing immediately.
+  const [isProbeHoverStale, setIsProbeHoverStale] = useState(false);
   const canSubmit = target.trim().length > 0 && !disabled;
+  useEffect(() => {
+    if (!isProbeHoverStale) {
+      return;
+    }
+
+    const clear = () => setIsProbeHoverStale(false);
+
+    window.addEventListener("mousemove", clear, { once: true });
+    window.addEventListener("pointerdown", clear, { once: true });
+
+    return () => {
+      window.removeEventListener("mousemove", clear);
+      window.removeEventListener("pointerdown", clear);
+    };
+  }, [isProbeHoverStale]);
+
+  const selectedProbe = PROBE_LOCATIONS.find((location) => location.id === probe);
+  const probeLabel = selectedProbe
+    ? `${countryFlag(selectedProbe.country)} ${selectedProbe.label}`
+    : t("search.nearest");
 
   return (
     <form
@@ -485,7 +636,7 @@ function SearchForm({
           onChange={(event) => onTargetChange(event.target.value)}
           onClick={() => setIsInputFocused(true)}
           onFocus={() => setIsInputFocused(true)}
-          placeholder={isInputFocused ? "" : "Search domain or IP"}
+          placeholder={isInputFocused ? "" : t("search.placeholder")}
           className="theme-search-input min-w-0 flex-1 bg-transparent text-center text-base disabled:cursor-not-allowed sm:text-lg"
         />
         <button
@@ -520,8 +671,128 @@ function SearchForm({
         ))}
       </div>
 
+      <div
+        className={[
+          "theme-probe-row mx-auto flex items-baseline justify-center gap-2",
+          compact ? "mt-2.5" : "mt-4",
+          disabled ? "opacity-50" : ""
+        ].join(" ")}
+      >
+        <span className="theme-probe-caption text-[10px] uppercase leading-none tracking-[0.28em]">
+          {t("search.measuringFrom")}
+        </span>
+        <span
+          className={[
+            "theme-probe-control relative inline-flex items-center gap-1.5",
+            isProbeHoverStale ? "pointer-events-none" : ""
+          ].join(" ")}
+        >
+          <span className="theme-probe-value text-xs leading-none">{probeLabel}</span>
+          <ChevronDown className="theme-probe-chevron h-3 w-3 shrink-0" aria-hidden="true" />
+          {/* The native select stays a real select for keyboard and mobile, just invisible:
+              its own box would size to the longest option and strand the chevron. */}
+          <select
+            value={probe}
+            disabled={disabled}
+            aria-label={t("search.probeAria")}
+            onChange={(event) => {
+              onProbeChange(event.target.value);
+              setIsProbeHoverStale(true);
+            }}
+            className={[
+              "absolute inset-0 h-full w-full opacity-0",
+              disabled ? "cursor-not-allowed" : "cursor-pointer"
+            ].join(" ")}
+          >
+            <option value="auto">{t("search.nearest")}</option>
+            {PROBE_LOCATIONS.map((location) => (
+              <option key={location.id} value={location.id}>
+                {countryFlag(location.country)} {location.label}
+              </option>
+            ))}
+          </select>
+        </span>
+      </div>
+
       {error ? <p className="mt-4 text-center text-sm text-signal-amber">{error}</p> : null}
     </form>
+  );
+}
+
+// Two small cards in the corner: how to reach the maker, and the team's site. Each opens
+// on its button and closes on a click anywhere else or Escape.
+function CornerPopovers() {
+  const [open, setOpen] = useState<"team" | "mail" | undefined>();
+  const [copied, setCopied] = useState(false);
+  const barRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent ? event.key === "Escape" : !barRef.current?.contains(event.target as Node)) setOpen(undefined);
+    };
+
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const toggle = (which: "team" | "mail") => {
+    setCopied(false);
+    setOpen((current) => (current === which ? undefined : which));
+  };
+  const copy = () => {
+    navigator.clipboard?.writeText(CONTACT_EMAIL).then(() => setCopied(true), () => setCopied(false));
+  };
+
+  return (
+    <div ref={barRef} className="relative flex items-center gap-2">
+      <button
+        type="button"
+        aria-label={t("team.button")}
+        title={t("team.button")}
+        aria-expanded={open === "team"}
+        onClick={() => toggle("team")}
+        className={["theme-toggle theme-toggle-button inline-flex h-12 w-12 items-center justify-center rounded-full border shadow-2xl backdrop-blur", open === "team" ? "theme-toggle-button-active" : ""].join(" ")}
+      >
+        <Users className="h-4 w-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        aria-label={t("contact.button")}
+        title={t("contact.button")}
+        aria-expanded={open === "mail"}
+        onClick={() => toggle("mail")}
+        className={["theme-toggle theme-toggle-button inline-flex h-12 w-12 items-center justify-center rounded-full border shadow-2xl backdrop-blur", open === "mail" ? "theme-toggle-button-active" : ""].join(" ")}
+      >
+        <Mail className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="corner-popover" role="dialog" aria-label={open === "mail" ? t("contact.title") : t("team.title")}>
+          <p className="corner-popover__title">{open === "mail" ? t("contact.title") : t("team.title")}</p>
+          {open === "mail" ? (
+            <div className="corner-popover__row">
+              <a className="corner-popover__link" href={`mailto:${CONTACT_EMAIL}`}>
+                {CONTACT_EMAIL}
+              </a>
+              <button type="button" className="corner-popover__action" onClick={copy}>
+                {copied ? t("contact.copied") : t("contact.copy")}
+              </button>
+            </div>
+          ) : (
+            <a className="corner-popover__link corner-popover__row" href={TEAM_SITE} target="_blank" rel="noreferrer">
+              {t("team.open")}
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -533,11 +804,11 @@ function ThemeToggle({
   onChange: (theme: ThemeMode) => void;
 }>) {
   return (
-    <div className="theme-toggle fixed bottom-5 right-5 z-50 grid grid-cols-2 rounded-full border p-1 shadow-2xl backdrop-blur">
+    <div className="theme-toggle grid grid-cols-2 rounded-full border p-1 shadow-2xl backdrop-blur">
       <button
         type="button"
-        aria-label="Day mode"
-        title="Day mode"
+        aria-label={t("theme.day")}
+        title={t("theme.day")}
         onClick={() => onChange("light")}
         className={[
           "theme-toggle-button inline-flex h-10 w-10 items-center justify-center rounded-full transition",
@@ -548,8 +819,8 @@ function ThemeToggle({
       </button>
       <button
         type="button"
-        aria-label="Night mode"
-        title="Night mode"
+        aria-label={t("theme.night")}
+        title={t("theme.night")}
         onClick={() => onChange("dark")}
         className={[
           "theme-toggle-button inline-flex h-10 w-10 items-center justify-center rounded-full transition",

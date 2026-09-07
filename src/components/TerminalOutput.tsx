@@ -1,4 +1,5 @@
 import { Terminal } from "lucide-react";
+import { t } from "../lib/i18n";
 import type { ReactNode } from "react";
 import type {
   HopResult,
@@ -94,6 +95,10 @@ function commandLines(params: { mode: TraceMode; result?: MeasurementResult; tar
   const notices = globalpingMtr
     ? ["notice  Install-free MTR uses Globalping's 16-sample cap; higher-cycle local MTR requires a local agent"]
     : [];
+
+  if (params.result?.reachedTarget === false) {
+    notices.push(`notice  Target not reached within ${params.result.hops.length} hops; output ends at the last router that answered`);
+  }
 
   return [
     `$ ${commandForMode(params.mode, params.target)}`,
@@ -193,7 +198,7 @@ export function TerminalOutput({ error, hops, mode, result, status, target }: Te
           <Terminal className="h-5 w-5 shrink-0 text-signal-cyan" aria-hidden="true" />
           <div className="min-w-0">
             <p className="terminal-eyebrow text-xs uppercase tracking-[0.26em]">
-              {mode === "mtr" ? "MTR terminal" : "Traceout terminal"}
+              {mode === "mtr" ? t("terminal.mtr") : t("terminal.traceout")}
             </p>
           </div>
         </div>

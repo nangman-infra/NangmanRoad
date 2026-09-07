@@ -149,7 +149,10 @@ body {
 
 .route-result-shell {
   min-height: calc(100dvh - 1.5rem);
-  animation: route-result-arrival 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* A short fade and slide, nothing more: opacity and transform run on the compositor.
+     The blur this once animated was a full-screen filter over the globe's canvas for the
+     better part of a second - the stutter at the reveal. */
+  animation: route-result-arrival 380ms ease-out both;
 }
 
 .result-topbar {
@@ -302,26 +305,12 @@ body {
 @keyframes route-result-arrival {
   0% {
     opacity: 0;
-    filter: blur(10px);
-    transform: translateY(28px) scale(0.982);
-  }
-
-  38% {
-    opacity: 0;
-    filter: blur(8px);
-    transform: translateY(18px) scale(0.988);
-  }
-
-  72% {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(-2px) scale(1);
+    transform: translateY(12px);
   }
 
   100% {
     opacity: 1;
-    filter: blur(0);
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -557,6 +546,71 @@ body {
 .theme-toggle-button-active {
   background: var(--mode-active-bg);
   color: var(--mode-active-text);
+}
+
+/* ── Corner cards: contact and team site ───────────────────────────────── */
+.corner-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.6rem);
+  min-width: 15rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(94, 231, 255, 0.22);
+  background: rgba(5, 8, 18, 0.9);
+  color: rgba(248, 251, 255, 0.94);
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(12px);
+}
+
+.corner-popover__title {
+  margin: 0 0 0.3rem;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.corner-popover__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.corner-popover__link {
+  color: rgba(94, 231, 255, 0.92);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.corner-popover__link:hover {
+  text-decoration: underline;
+}
+
+.corner-popover__action {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(94, 231, 255, 0.3);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.theme-light .corner-popover {
+  border-color: rgba(14, 165, 233, 0.28);
+  background: rgba(255, 255, 255, 0.94);
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.theme-light .corner-popover__link {
+  color: #0369a1;
+}
+
+.theme-light .corner-popover__action {
+  border-color: rgba(14, 165, 233, 0.35);
 }
 
 .theme-toggle-button-active:hover:not(:disabled) {
@@ -951,6 +1005,21 @@ input:focus-visible {
   background: rgba(5, 8, 18, 0.72) !important;
   color: rgba(220, 245, 255, 0.78) !important;
   backdrop-filter: blur(10px);
+  /* The data credits are a required notice, so they wrap onto a second line on a narrow
+     screen rather than being clipped by the map edge. */
+  max-width: min(100%, 46rem);
+  padding: 2px 8px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+/* On a phone the floating theme toggle sits over the map's bottom-right corner, which is
+   exactly where the credits end. Keep the text clear of it rather than let a required
+   notice disappear under a button. */
+@media (max-width: 640px) {
+  .leaflet-control-attribution {
+    padding-right: 7.5rem;
+  }
 }
 
 .leaflet-control-attribution a {
@@ -1013,6 +1082,33 @@ input:focus-visible {
   background: transparent;
   border: 0;
   overflow: visible;
+}
+
+/* A target that never answered: its name beside the last router that did, marked so. */
+.packet-map-unreached-wrapper {
+  background: transparent;
+  border: 0;
+  overflow: visible;
+}
+
+.packet-map-unreached {
+  position: absolute;
+  left: 12px;
+  top: 6px;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px dashed rgba(148, 163, 184, 0.7);
+  background: rgba(8, 15, 28, 0.78);
+  color: rgba(203, 213, 225, 0.92);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.theme-light .packet-map-unreached {
+  border-color: rgba(100, 116, 139, 0.6);
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(51, 65, 85, 0.9);
 }
 
 .packet-map-marker {
@@ -1205,6 +1301,16 @@ input:focus-visible {
   margin-top: 0.18rem;
   color: rgba(205, 236, 245, 0.68);
 }
+.packet-map-tooltip__why {
+  margin-top: 0.3rem;
+  color: rgba(205, 236, 245, 0.5);
+  font-size: 11px;
+}
+.packet-map-tooltip__speed {
+  margin-top: 0.3rem;
+  color: rgba(205, 236, 245, 0.5);
+  font-size: 11px;
+}
 
 .packet-map-tooltip__detail {
   margin-top: 0.24rem;
@@ -1230,3 +1336,447 @@ input:focus-visible {
     stroke-dashoffset: -40;
   }
 }
+
+.theme-probe-caption {
+  color: var(--text-muted);
+  opacity: 0.72;
+}
+
+.theme-probe-value {
+  color: var(--text-muted);
+  transition: color 200ms ease;
+}
+
+.theme-probe-chevron {
+  color: var(--text-muted);
+  opacity: 0.7;
+  transition: color 200ms ease;
+}
+
+.theme-probe-control:hover .theme-probe-value,
+.theme-probe-control:hover .theme-probe-chevron {
+  color: var(--text-primary);
+}
+
+/* Ring only for keyboard focus. :focus-within would leave it drawn after a mouse pick,
+   which reads as a hit area much larger than the label actually is. */
+.theme-probe-control:has(select:focus-visible) {
+  outline: 1px solid var(--mode-selected-border);
+  outline-offset: 3px;
+  border-radius: 9999px;
+}
+
+.theme-probe-control select:disabled {
+  pointer-events: none;
+}
+
+.theme-probe-control option {
+  background: var(--mode-bg);
+  color: var(--text-primary);
+}
+
+.route-summary {
+  color: var(--text-muted);
+}
+
+.route-summary-label {
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  margin-right: 4px;
+}
+
+
+/* ── Packet riding the 2D route ─────────────────────────────────────────── */
+.packet-map-packet-wrap {
+  background: transparent;
+  border: 0;
+}
+
+.packet-map-packet {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ffffff 0 30%, rgba(160, 246, 255, 1) 36%, rgba(94, 231, 255, 0) 72%);
+  /* Neon: a white-hot core, a tight cyan bloom and a wide soft one. */
+  box-shadow:
+    0 0 4px rgba(255, 255, 255, 0.95),
+    0 0 12px rgba(94, 231, 255, 1),
+    0 0 26px rgba(94, 231, 255, 0.75),
+    0 0 44px rgba(94, 231, 255, 0.35);
+}
+
+.theme-light .packet-map-packet {
+  background: radial-gradient(circle, #ffffff 0 28%, rgba(56, 189, 248, 1) 34%, rgba(14, 165, 233, 0) 72%);
+  box-shadow:
+    0 0 4px rgba(255, 255, 255, 0.9),
+    0 0 10px rgba(14, 165, 233, 0.9),
+    0 0 22px rgba(14, 165, 233, 0.5),
+    0 0 36px rgba(14, 165, 233, 0.25);
+}
+
+/* ── Map view controls ──────────────────────────────────────────────────── */
+.route-view-toggle {
+  height: 2.15rem;
+  min-width: 6.4rem;
+}
+
+.route-layer-toggle {
+  border-color: var(--panel-border);
+  background: var(--toggle-bg);
+  color: var(--text-muted);
+}
+
+.route-layer-toggle:hover {
+  color: var(--mode-selected-text);
+}
+
+.route-layer-toggle-active {
+  color: var(--mode-selected-text);
+  border-color: rgba(94, 231, 255, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(94, 231, 255, 0.22);
+}
+
+/* ── 3D globe overlay ───────────────────────────────────────────────────── */
+.globe-shell {
+  position: absolute;
+  inset: 0;
+  /* Above Leaflet's controls, which sit at 1000 inside the map container. */
+  z-index: 1001;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(94, 231, 255, 0.07), transparent 58%),
+    linear-gradient(180deg, rgba(8, 14, 26, 0.98), rgba(5, 8, 18, 0.99));
+}
+
+.theme-light .globe-shell {
+  background: linear-gradient(180deg, #f7fbff, #e4f1fa);
+}
+
+.route-legend__scale {
+  gap: 0.25rem;
+}
+.route-legend__scale-title {
+  margin-right: 0.15rem;
+  opacity: 0.75;
+}
+.route-legend__swatch-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin-left: 0.35rem;
+}
+.route-legend__swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+.route-legend__bar {
+  display: inline-block;
+  width: 88px;
+  height: 7px;
+  margin: 0 0.4rem;
+  border-radius: 999px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.globe-host {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+.globe-host--ready {
+  opacity: 1;
+}
+.globe-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.route-path-toggle {
+  min-width: 7.4rem;
+}
+
+.globe-host canvas {
+  outline: none;
+}
+
+.globe-loading,
+.globe-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(220, 245, 255, 0.72);
+  font-size: 0.85rem;
+}
+
+.globe-fallback {
+  position: absolute;
+  inset: auto 0 3rem 0;
+}
+
+.globe-credits {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  /* Above the globe's canvas (z-index 1), or the globe covers the notice. */
+  z-index: 2;
+  max-width: min(100%, 46rem);
+  padding: 2px 8px;
+  border-radius: 6px 0 0 0;
+  background: rgba(5, 8, 18, 0.72);
+  color: rgba(220, 245, 255, 0.78);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.globe-credits a {
+  color: rgba(94, 231, 255, 0.82);
+}
+
+.theme-light .globe-credits {
+  background: rgba(255, 255, 255, 0.88);
+  color: rgba(31, 41, 55, 0.82);
+}
+
+.theme-light .globe-credits a {
+  color: #0369a1;
+}
+
+@media (max-width: 640px) {
+  .globe-credits {
+    padding-right: 7.5rem;
+  }
+}
+
+
+/* ── Packet ghosts, cable tooltips, legend, globe tooltips ─────────────── */
+.packet-map-packet--ghost {
+  width: 10px;
+  height: 10px;
+  margin: 2px;
+  box-shadow: 0 0 8px rgba(94, 231, 255, 0.45);
+}
+
+.packet-map-tooltip--cable {
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.route-legend {
+  color: rgba(205, 236, 245, 0.62);
+}
+
+.theme-light .route-legend {
+  color: rgba(30, 41, 59, 0.66);
+}
+
+.route-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.route-legend__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(94, 231, 255, 0.85);
+  background: rgba(5, 8, 18, 0.6);
+}
+
+.route-legend__line {
+  width: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(174, 234, 245, 0.35), #aeeaf5);
+}
+
+.route-legend__packet {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ffffff 0 30%, rgba(94, 231, 255, 0.95) 36%, rgba(94, 231, 255, 0) 72%);
+  box-shadow: 0 0 8px rgba(94, 231, 255, 0.7);
+}
+
+.theme-light .route-legend__dot {
+  border-color: rgba(14, 165, 233, 0.85);
+  background: #ffffff;
+}
+
+.theme-light .route-legend__line {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.35), #0284c7);
+}
+
+.globe-tip {
+  padding: 6px 10px;
+  border: 1px solid rgba(94, 231, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(5, 8, 18, 0.88);
+  color: rgba(248, 251, 255, 0.94);
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  max-width: 22rem;
+  white-space: normal;
+}
+
+.globe-tip__title {
+  font-weight: 700;
+}
+
+.globe-tip__meta {
+  margin-top: 2px;
+  color: rgba(205, 236, 245, 0.68);
+}
+.globe-tip__why {
+  margin-top: 4px;
+  color: rgba(205, 236, 245, 0.5);
+  font-size: 11px;
+}
+.globe-tip__speed {
+  margin-top: 4px;
+  color: rgba(205, 236, 245, 0.5);
+  font-size: 11px;
+}
+
+.theme-light .globe-tip {
+  border-color: rgba(14, 165, 233, 0.34);
+  background: rgba(17, 24, 39, 0.9);
+}
+
+/* ── Route details card in the map's corner ─────────────────────────────── */
+.route-hud {
+  position: absolute;
+  left: 0.85rem;
+  bottom: 0.85rem;
+  z-index: 1010;
+  width: min(31rem, calc(100% - 1.7rem));
+  max-height: 46%;
+  overflow: auto;
+  padding: 0.7rem 0.9rem 0.8rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(94, 231, 255, 0.16);
+  background: linear-gradient(180deg, rgba(8, 15, 28, 0.9), rgba(5, 9, 18, 0.94));
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  /* No backdrop blur: blurring what a WebGL canvas repaints every frame costs the frame. */
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.theme-light .route-hud {
+  border-color: rgba(14, 165, 233, 0.22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(240, 247, 252, 0.9));
+  box-shadow:
+    0 14px 34px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.route-hud__note {
+  margin: 0 0 0.5rem;
+  opacity: 0.82;
+}
+.route-hud__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.8rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+.route-hud__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  font-size: 11.5px;
+}
+.route-hud__summary > span {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem;
+}
+.route-hud__cables {
+  flex-basis: 100%;
+}
+/* The fold-away control exists only on a phone; elsewhere the details are always open. */
+.route-hud__toggle {
+  display: none;
+}
+@media (max-width: 640px) {
+  .route-hud {
+    max-height: 42%;
+    font-size: 10px;
+  }
+  .route-hud__note {
+    display: none;
+  }
+  .route-hud__toggle {
+    display: inline-flex;
+    margin-bottom: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(94, 231, 255, 0.28);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+  }
+  .route-hud--collapsed .route-hud__legend,
+  .route-hud--collapsed .route-hud__summary {
+    display: none;
+  }
+  .route-hud--collapsed .route-hud__toggle {
+    margin-bottom: 0;
+  }
+}
+
+/* ── Packet arrival ripple ─────────────────────────────────────────────── */
+.packet-map-packet-wrap {
+  transition: opacity 320ms ease;
+}
+.packet-map-ripple-wrap {
+  background: transparent;
+  border: 0;
+  overflow: visible;
+}
+.packet-map-ripple {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 999px;
+  border: 2px solid rgba(94, 231, 255, 0.92);
+  box-shadow: 0 0 18px rgba(94, 231, 255, 0.55);
+  animation: packet-ripple 1.05s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.packet-map-ripple--late {
+  animation-delay: 0.2s;
+  opacity: 0;
+}
+.theme-light .packet-map-ripple {
+  border-color: rgba(14, 165, 233, 0.9);
+  box-shadow: 0 0 14px rgba(14, 165, 233, 0.4);
+}
+@keyframes packet-ripple {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(6.5);
+    opacity: 0;
+  }
+}
+

@@ -542,9 +542,15 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
   const journeyStateRef = useRef<JourneyState>(journeyState);
   const themeRef = useRef<ThemeMode>(theme);
   const pointerRef = useRef<PointerPoint>({ x: 0, y: 0, active: false });
+  // Restarts the drawing loop after it parked itself under a result.
+  const resumeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     journeyStateRef.current = journeyState;
+
+    if (journeyState !== "settled") {
+      resumeRef.current();
+    }
   }, [journeyState]);
 
   useEffect(() => {
@@ -570,6 +576,7 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
     let height = 0;
     let nodes: NetworkNode[] = [];
     let rafId = 0;
+    let parked = false;
     let lastTimeStamp = 0;
     let initialized = false;
     let motion = {
@@ -869,10 +876,18 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
       const target = targetMotion(state);
 
       lastTimeStamp = currentTime;
-      motion.speed = mix(motion.speed, target.speed, Math.min(1, deltaSeconds * 3.2));
-      motion.linkBoost = mix(motion.linkBoost, target.linkBoost, Math.min(1, deltaSeconds * 3.4));
-      motion.drift = mix(motion.drift, target.drift, Math.min(1, deltaSeconds * 0.62));
-      motion.sceneOpacity = mix(motion.sceneOpacity, target.sceneOpacity, Math.min(1, deltaSeconds * 4.2));
+
+      if (state === "settled") {
+        // Under a result the backdrop takes its settled look - the faint mesh - in one go.
+        // Easing into it over a second meant a full-screen canvas redrawn every frame right
+        // at the reveal, and stopping the easing early left the launch mesh frozen bright.
+        Object.assign(motion, target);
+      } else {
+        motion.speed = mix(motion.speed, target.speed, Math.min(1, deltaSeconds * 3.2));
+        motion.linkBoost = mix(motion.linkBoost, target.linkBoost, Math.min(1, deltaSeconds * 3.4));
+        motion.drift = mix(motion.drift, target.drift, Math.min(1, deltaSeconds * 0.62));
+        motion.sceneOpacity = mix(motion.sceneOpacity, target.sceneOpacity, Math.min(1, deltaSeconds * 4.2));
+      }
 
       ctx.clearRect(0, 0, width, height);
       drawBackground();
@@ -880,8 +895,22 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
       drawConnections(currentTime);
       drawNodes(currentTime);
 
-      rafId = requestAnimationFrame(draw);
+      // Under a result the globe owns the frame budget: the settled look is drawn once and
+      // the backdrop stops drawing altogether, until the next search.
+      if (state === "settled") {
+        parked = true;
+      } else {
+        rafId = requestAnimationFrame(draw);
+      }
     }
+
+    resumeRef.current = () => {
+      if (parked) {
+        parked = false;
+        lastTimeStamp = 0;
+        rafId = requestAnimationFrame(draw);
+      }
+    };
 
     resize();
     rafId = requestAnimationFrame(draw);
@@ -891,6 +920,7 @@ export function NetworkMotionBackground({ journeyState, theme }: NetworkMotionBa
 
     return () => {
       cancelAnimationFrame(rafId);
+      resumeRef.current = () => {};
       globalThis.removeEventListener("resize", resize);
       globalThis.removeEventListener("mousemove", updatePointer);
       globalThis.removeEventListener("mouseleave", leavePointer);
