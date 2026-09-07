@@ -1,0 +1,25 @@
+{
+  "city": "Seoul",
+  "country": "KR",
+  "target": "www.ufpr.br",
+  "probe": {
+    "continent": "AS",
+    "region": "Eastern Asia",
+    "country": "KR",
+    "state": null,
+    "city": "Seoul",
+    "asn": 63473,
+    "longitude": 126.98,
+    "latitude": 37.57,
+    "network": "HostHatch",
+    "tags": [
+      "datacenter-network",
+      "u-Decicus"
+    ],
+    "resolvers": [
+      "1.1.1.1",
+      "9.9.9.9"
+    ]
+  },
+  "raw": "traceroute to www.ufpr.br (200.17.209.3), 20 hops max, 60 byte packets\n 1  _gateway (85.155.176.1)  16.296 ms  16.126 ms\n 2  151.245.106.2 (151.245.106.2)  0.972 ms  0.964 ms\n 3  210.57.34.10 (210.57.34.10)  1.457 ms  1.730 ms\n 4  i-1072.ksyd-core02.telstraglobal.net (202.84.149.205)  2.660 ms  2.653 ms\n 5  i-1088.hkth-core03.telstraglobal.net (202.84.141.253)  36.890 ms  36.881 ms\n 6  i-12452.ulhc-core03.telstraglobal.net (202.84.141.122)  207.353 ms  207.347 ms\n 7  i-1001.ulco01.telstraglobal.net (202.84.178.69)  208.105 ms  208.015 ms\n 8  134.159.95.18 (134.159.95.18)  231.861 ms  231.851 ms\n 9  * *\n10  94.142.127.65 (94.142.127.65)  274.062 ms  274.117 ms\n11  84.16.15.66 (84.16.15.66)  313.748 ms  313.822 ms\n12  94.142.99.176 (94.142.99.176)  378.467 ms  378.339 ms\n13  213.140.36.89 (213.140.36.89)  385.247 ms  385.206 ms\n14  216.184.113.143 (216.184.113.143)  384.800 ms  384.712 ms\n15  cpr1-csp2-tlb.bkb.rnp.br (170.79.213.109)  446.663 ms  446.595 ms\n16  bpr1-cpr1.bkb.rnp.br (170.79.214.61)  451.282 ms  451.216 ms\n17  200.238.139.18 (200.238.139.18)  458.447 ms  458.351 ms\n18  * *\n19  * *\n20  www.ufpr.br (200.17.209.3)  385.617 ms *"
+}

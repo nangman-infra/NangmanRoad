@@ -1,0 +1,27 @@
+{
+  "city": "Amsterdam",
+  "country": "NL",
+  "target": "overclockers.com.au",
+  "probe": {
+    "continent": "EU",
+    "region": "Western Europe",
+    "country": "NL",
+    "state": null,
+    "city": "Amsterdam",
+    "asn": 60781,
+    "longitude": 4.9,
+    "latitude": 52.38,
+    "network": "LeaseWeb",
+    "tags": [
+      "datacenter-network",
+      "u-zGato"
+    ],
+    "resolvers": [
+      "1.1.1.1",
+      "8.8.8.8",
+      "2606:4700:4700::1111",
+      "2001:4860:4860::8888"
+    ]
+  },
+  "raw": "traceroute to overclockers.com.au (27.131.102.2), 20 hops max, 60 byte packets\n 1  _gateway (82.192.72.252)  0.527 ms  0.499 ms\n 2  89.149.216.28 (89.149.216.28)  0.492 ms  0.487 ms\n 3  ae-43.cr07.ams-01.nl.leaseweb.net (81.17.35.170)  0.561 ms  0.557 ms\n 4  xe-4-3-3.bb04.ams-01.leaseweb.net (31.31.38.60)  0.956 ms  1.175 ms\n 5  31.31.36.3 (31.31.36.3)  1.072 ms  1.094 ms\n 6  ae0-4.rt.evo.ams.nl.retn.net (87.245.233.27)  1.777 ms  1.773 ms\n 7  * *\n 8  * *\n 9  * *\n10  * *\n11  * *\n12  * *\n13  * *\n14  overclockers.com.au (27.131.102.2)  328.519 ms  328.533 ms"
+}

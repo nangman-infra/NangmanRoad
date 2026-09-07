@@ -1,0 +1,23 @@
+{
+  "city": "Nairobi",
+  "country": "KE",
+  "target": "www.iij.ad.jp",
+  "probe": {
+    "continent": "AF",
+    "region": "Eastern Africa",
+    "country": "KE",
+    "state": null,
+    "city": "Nairobi",
+    "asn": 329636,
+    "longitude": 36.82,
+    "latitude": -1.28,
+    "network": "Imani Labs",
+    "tags": [
+      "eyeball-network"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.iij.ad.jp (202.232.2.180), 20 hops max, 60 byte packets\n 1  _gateway (172.16.0.139)  0.578 ms  0.512 ms\n 2  41-90-234-65.safaricombusiness.co.ke (41.90.234.65)  1.112 ms *\n 3  * *\n 4  196.201.222.254 (196.201.222.254)  9.343 ms 196.201.222.252 (196.201.222.252)  9.654 ms\n 5  196.201.222.253 (196.201.222.253)  9.446 ms  9.420 ms\n 6  195.229.27.213 (195.229.27.213)  154.720 ms  154.688 ms\n 7  5.195.70.166 (5.195.70.166)  146.533 ms  146.671 ms\n 8  * *\n 9  2497.sgw.equinix.com (27.111.228.196)  281.398 ms  281.385 ms\n10  tky009bb10.IIJ.Net (58.138.88.225)  283.873 ms  283.858 ms\n11  osk011bb00.IIJ.Net (58.138.84.209)  298.590 ms  298.490 ms\n12  osk008agr02.iij.net (210.130.16.25)  298.800 ms  298.986 ms\n13  www.iij.ad.jp (202.232.2.180)  298.867 ms *"
+}

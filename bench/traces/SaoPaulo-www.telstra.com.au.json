@@ -1,0 +1,26 @@
+{
+  "city": "Sao Paulo",
+  "country": "BR",
+  "target": "www.telstra.com.au",
+  "probe": {
+    "continent": "SA",
+    "region": "South America",
+    "country": "BR",
+    "state": null,
+    "city": "Sao Paulo",
+    "asn": 31898,
+    "longitude": -46.64,
+    "latitude": -23.55,
+    "network": "Oracle",
+    "tags": [
+      "oci-sa-saopaulo-1",
+      "oci",
+      "datacenter-network",
+      "u-Santh-E"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.telstra.com.au (3.174.83.64), 20 hops max, 60 byte packets\n 1  _gateway (140.91.208.87)  0.263 ms  0.218 ms\n 2  151.148.13.243 (151.148.13.243)  5.012 ms  5.055 ms\n 3  * *\n 4  * *\n 5  * *\n 6  * *\n 7  * *\n 8  www.telstra.com.au (3.174.83.64)  0.918 ms *"
+}

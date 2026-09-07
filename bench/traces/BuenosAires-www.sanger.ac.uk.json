@@ -1,0 +1,25 @@
+{
+  "city": "Buenos Aires",
+  "country": "AR",
+  "target": "www.sanger.ac.uk",
+  "probe": {
+    "continent": "SA",
+    "region": "South America",
+    "country": "AR",
+    "state": null,
+    "city": "Buenos Aires",
+    "asn": 27747,
+    "longitude": -58.38,
+    "latitude": -34.6,
+    "network": "Telecentro",
+    "tags": [
+      "eyeball-network",
+      "u-pmoran84",
+      "u-pmoran84:work1"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.sanger.ac.uk (193.62.203.106), 20 hops max, 60 byte packets\n 1  _gateway (192.168.36.126)  0.558 ms  0.828 ms\n 2  192.168.29.5 (192.168.29.5)  0.874 ms  1.270 ms\n 3  192.168.29.6 (192.168.29.6)  0.404 ms  0.443 ms\n 4  * *\n 5  * *\n 6  192.168.120.45 (192.168.120.45)  1.877 ms  1.913 ms\n 7  * *\n 8  200-32-127-97.static.impsat.net.ar (200.32.127.97)  3.897 ms  3.891 ms\n 9  * *\n10  212.187.216.238 (212.187.216.238)  208.657 ms  208.651 ms\n11  ae24.londtt-sbr1.ja.net (146.97.35.193)  215.613 ms  215.588 ms\n12  ae28.londtw-sbr2.ja.net (146.97.33.62)  214.645 ms  214.758 ms\n13  ae30.londpg-sbr2.ja.net (146.97.33.5)  210.034 ms  210.056 ms\n14  ae26.londpg-ban1.ja.net (146.97.35.234)  204.425 ms  204.432 ms\n15  ae25.londpg-lar1.ja.net (146.97.36.46)  209.961 ms  209.950 ms\n16  genome.londpg-lar1.ja.net (146.97.41.222)  211.570 ms  211.575 ms\n17  * *\n18  www.sanger.ac.uk (193.62.203.106)  212.432 ms  212.120 ms"
+}

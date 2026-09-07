@@ -1,0 +1,27 @@
+{
+  "city": "Sydney",
+  "country": "AU",
+  "target": "www.uct.ac.za",
+  "probe": {
+    "continent": "OC",
+    "region": "Australia and New Zealand",
+    "country": "AU",
+    "state": null,
+    "city": "Sydney",
+    "asn": 31898,
+    "longitude": 150.9,
+    "latitude": -33.77,
+    "network": "Oracle",
+    "tags": [
+      "oci-ap-sydney-1",
+      "oci",
+      "datacenter-network",
+      "u-nanonic",
+      "u-nanonic:oci-syd"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.uct.ac.za (137.158.159.192), 20 hops max, 60 byte packets\n 1  _gateway (140.91.212.7)  0.220 ms  0.177 ms\n 2  154.18.99.75 (154.18.99.75)  1.298 ms  1.289 ms\n 3  * *\n 4  be3588.ccr51.pdx02.atlas.cogentco.com (154.54.47.230)  134.134 ms  134.130 ms\n 5  be2378.ccr21.pdx01.atlas.cogentco.com (154.54.164.21)  134.682 ms  134.697 ms\n 6  be5386.ccr21.sfo01.atlas.cogentco.com (154.54.43.157)  148.173 ms  148.316 ms\n 7  be3669.ccr41.sjc03.atlas.cogentco.com (154.54.43.10)  149.575 ms  149.565 ms\n 8  ae-26.a03.snjsca04.us.bb.gin.ntt.net (129.250.8.41)  149.291 ms  149.276 ms\n 9  ae-1.r27.snjsca04.us.bb.gin.ntt.net (129.250.5.226)  154.616 ms  154.697 ms\n10  ae-8.r23.dllstx14.us.bb.gin.ntt.net (129.250.4.155)  191.742 ms  191.815 ms\n11  ae-18.r22.dllstx14.us.bb.gin.ntt.net (129.250.3.20)  326.825 ms  326.829 ms\n12  ae-3.r24.miamfl02.us.bb.gin.ntt.net (129.250.2.54)  327.409 ms  327.451 ms\n13  ae-18.a02.miamfl02.us.bb.gin.ntt.net (129.250.3.79)  222.817 ms  222.770 ms\n14  ce-2-0-2.a02.miamfl02.us.ce.gin.ntt.net (129.250.200.114)  216.874 ms  216.855 ms\n15  et-0-0-1-66.rt04.bb.ampath.net (170.39.8.30)  268.495 ms  268.385 ms\n16  187-185-103-190.ampath.net (190.103.185.187)  377.075 ms  377.034 ms\n17  et-0-0-1-0-cpt7-pe1.net.tenet.ac.za (155.232.64.70)  376.386 ms  376.369 ms\n18  154.114.124.1 (154.114.124.1)  379.552 ms  379.680 ms\n19  * *\n20  * *"
+}

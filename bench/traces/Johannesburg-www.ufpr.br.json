@@ -1,0 +1,24 @@
+{
+  "city": "Johannesburg",
+  "country": "ZA",
+  "target": "www.ufpr.br",
+  "probe": {
+    "continent": "AF",
+    "region": "Southern Africa",
+    "country": "ZA",
+    "state": null,
+    "city": "Johannesburg",
+    "asn": 136907,
+    "longitude": 28.04,
+    "latitude": -26.2,
+    "network": "HUAWEI CLOUDS",
+    "tags": [
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "private",
+      "41.79.246.5"
+    ]
+  },
+  "raw": "traceroute to www.ufpr.br (200.17.209.3), 20 hops max, 60 byte packets\n 1  _gateway (100.64.0.1)  9.235 ms  31.014 ms\n 2  10.21.6.5 (10.21.6.5)  54.641 ms  100.106 ms\n 3  10.21.3.226 (10.21.3.226)  3.579 ms  3.665 ms\n 4  11.91.68.83 (11.91.68.83)  3.839 ms  3.755 ms\n 5  * *\n 6  * *\n 7  * *\n 8  11.91.68.48 (11.91.68.48)  3.925 ms  3.922 ms\n 9  172.16.105.50 (172.16.105.50)  1.961 ms  1.958 ms\n10  * *\n11  172.16.98.21 (172.16.98.21)  1.417 ms  1.386 ms\n12  gig1-5.309-lbw-pe1-gab.liquidtelecom.net (77.246.58.110)  2.263 ms  2.359 ms\n13  41.175.222.135 (41.175.222.135)  2.748 ms  2.742 ms\n14  hu-0-1-0-18.lza-p1-cpt.liquidtelecom.net (41.175.222.132)  26.791 ms  26.856 ms\n15  41.175.222.126 (41.175.222.126)  147.481 ms  147.579 ms\n16  * *\n17  be2444.rcr51.opo01.atlas.cogentco.com (154.54.61.214)  159.692 ms  159.675 ms\n18  be2313.ccr31.bio02.atlas.cogentco.com (154.54.61.101)  162.784 ms  162.802 ms\n19  port-channel2252.ccr91.dca04.atlas.cogentco.com (154.54.47.137)  240.938 ms  240.952 ms\n20  be3482.ccr41.atl01.atlas.cogentco.com (154.54.169.178)  257.824 ms  257.910 ms"
+}

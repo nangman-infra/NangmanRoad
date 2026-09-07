@@ -1,0 +1,1 @@
+Built by `npm run data:refresh -- peeringdb` from PeeringDB (facilities, exchange prefixes, organisations). Not committed: PeeringDB's acceptable use policy allows the data for network troubleshooting but not passing it on in bulk. The Docker build fetches it; without the files the server starts and hop placement runs on the other evidence.

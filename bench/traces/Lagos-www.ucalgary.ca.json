@@ -1,0 +1,27 @@
+{
+  "city": "Lagos",
+  "country": "NG",
+  "target": "www.ucalgary.ca",
+  "probe": {
+    "continent": "AF",
+    "region": "Western Africa",
+    "country": "NG",
+    "state": null,
+    "city": "Lagos",
+    "asn": 214354,
+    "longitude": 3.39,
+    "latitude": 6.45,
+    "network": "SiteHUB Agency",
+    "tags": [
+      "datacenter-network",
+      "u-zGato"
+    ],
+    "resolvers": [
+      "1.1.1.1",
+      "8.8.8.8",
+      "2606:4700:4700::1111",
+      "2001:4860:4860::8888"
+    ]
+  },
+  "raw": "traceroute to www.ucalgary.ca (136.159.96.125), 20 hops max, 60 byte packets\n 1  _gateway (167.88.51.254)  4.055 ms  4.016 ms\n 2  197.157.72.69 (197.157.72.69)  10.325 ms  10.319 ms\n 3  41.78.188.5 (41.78.188.5)  162.788 ms  187.745 ms\n 4  41.78.188.147 (41.78.188.147)  107.920 ms  107.913 ms\n 5  212.221.79.149 (212.221.79.149)  127.965 ms  127.958 ms\n 6  ae21.cr9-chi1.ip4.gtt.net (141.136.108.245)  195.148 ms  195.139 ms\n 7  ip4.gtt.net (209.120.141.214)  194.342 ms  194.335 ms\n 8  rc1so-be13.cg.shawcable.net (66.163.65.17)  243.117 ms  243.110 ms\n 9  * *\n10  fw1uofc.cg.bigpipeinc.com (206.174.203.106)  241.132 ms  241.124 ms\n11  h66-244-233-20.bigpipeinc.com (66.244.233.20)  240.661 ms  240.608 ms\n12  h77.gpvpn.ucalgary.ca (136.159.199.77)  241.990 ms  241.933 ms\n13  * *\n14  * *\n15  * *\n16  www.ucalgary.ca (136.159.96.125)  245.923 ms  245.888 ms"
+}

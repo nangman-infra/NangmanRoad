@@ -1,0 +1,26 @@
+{
+  "city": "Singapore",
+  "country": "SG",
+  "target": "www.ucalgary.ca",
+  "probe": {
+    "continent": "AS",
+    "region": "South-eastern Asia",
+    "country": "SG",
+    "state": null,
+    "city": "Singapore",
+    "asn": 8888,
+    "longitude": 103.85,
+    "latitude": 1.29,
+    "network": "xTom",
+    "tags": [
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "1.1.1.1",
+      "1.0.0.1",
+      "2001:4860:4860::8888",
+      "2001:4860:4860::8844"
+    ]
+  },
+  "raw": "traceroute to www.ucalgary.ca (136.159.96.125), 20 hops max, 60 byte packets\n 1  _gateway (45.66.128.1)  14.535 ms  14.414 ms\n 2  185.248.87.202 (185.248.87.202)  9.307 ms  9.297 ms\n 3  185.248.87.206 (185.248.87.206)  8.363 ms  8.358 ms\n 4  r1.c1e19.sg1.xtom.sg (185.248.87.254)  0.462 ms  0.458 ms\n 5  c1.c1e19.sg1.xtom.sg (185.248.87.255)  8.698 ms  8.694 ms\n 6  185.248.87.214 (185.248.87.214)  669.522 ms  669.517 ms\n 7  unknown.globalsecurelayer.com (223.165.7.181)  0.903 ms  0.898 ms\n 8  e46.sg-eqxsg3-cr3.globalsecurelayer.com (223.165.7.180)  0.791 ms  0.815 ms\n 9  po10.sg-eqxsg3-bb5.globalsecurelayer.com (206.148.24.71)  0.777 ms  0.870 ms\n10  e3-9.ty-eqxty2-bb4.globalsecurelayer.com (206.148.24.67)  67.209 ms  67.206 ms\n11  e29.sea-drtsea10-cr7.globalsecurelayer.com (206.148.24.45)  149.175 ms  149.186 ms\n12  po1.chi-eqxch1-cr7.globalsecurelayer.com (206.148.25.92)  187.499 ms  187.479 ms\n13  * *\n14  rc1so-be13.cg.shawcable.net (66.163.65.17)  215.916 ms  215.969 ms\n15  * *\n16  fw1uofc.cg.bigpipeinc.com (206.174.203.106)  214.178 ms  214.140 ms\n17  h66-244-233-20.bigpipeinc.com (66.244.233.20)  214.110 ms  214.097 ms\n18  h77.gpvpn.ucalgary.ca (136.159.199.77)  213.226 ms  213.193 ms\n19  * *\n20  * *"
+}

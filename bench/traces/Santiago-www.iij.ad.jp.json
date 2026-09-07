@@ -1,0 +1,27 @@
+{
+  "city": "Santiago",
+  "country": "CL",
+  "target": "www.iij.ad.jp",
+  "probe": {
+    "continent": "SA",
+    "region": "South America",
+    "country": "CL",
+    "state": null,
+    "city": "Santiago",
+    "asn": 270013,
+    "longitude": -70.65,
+    "latitude": -33.46,
+    "network": "J AND J SPA (INFOFRACTAL)",
+    "tags": [
+      "datacenter-network",
+      "u-zGato"
+    ],
+    "resolvers": [
+      "1.1.1.1",
+      "8.8.8.8",
+      "2606:4700:4700::1111",
+      "2001:4860:4860::8888"
+    ]
+  },
+  "raw": "traceroute to www.iij.ad.jp (202.232.2.180), 20 hops max, 60 byte packets\n 1  * *\n 2  192.168.212.129 (192.168.212.129)  0.341 ms  0.339 ms\n 3  192.168.202.193 (192.168.202.193)  1.032 ms  1.030 ms\n 4  8.243.191.133 (8.243.191.133)  20.451 ms  20.449 ms\n 5  ae2.3602.ear2.NewYork1.net.lumen.tech (4.69.148.37)  114.386 ms  114.384 ms\n 6  133.106.98.216.sta.iij-america.net (216.98.106.133)  114.311 ms  114.308 ms\n 7  sea002bb00.IIJ.Net (58.138.81.85)  170.304 ms  170.303 ms\n 8  osk011bb00.IIJ.Net (58.138.84.185)  275.454 ms  275.452 ms\n 9  osk008agr02.iij.net (210.130.16.25)  275.843 ms  275.860 ms\n10  www.iij.ad.jp (202.232.2.180)  275.929 ms *"
+}

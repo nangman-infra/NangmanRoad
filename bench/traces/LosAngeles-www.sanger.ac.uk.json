@@ -1,0 +1,25 @@
+{
+  "city": "Los Angeles",
+  "country": "US",
+  "target": "www.sanger.ac.uk",
+  "probe": {
+    "continent": "NA",
+    "region": "Northern America",
+    "country": "US",
+    "state": "CA",
+    "city": "Los Angeles",
+    "asn": 36352,
+    "longitude": -118.24,
+    "latitude": 34.05,
+    "network": "HostPapa",
+    "tags": [
+      "datacenter-network",
+      "u-zachsills"
+    ],
+    "resolvers": [
+      "private",
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.sanger.ac.uk (193.62.203.105), 20 hops max, 60 byte packets\n 1  _gateway (10.10.34.213)  2.187 ms  2.086 ms\n 2  10.9.8.205 (10.9.8.205)  22.540 ms  22.532 ms\n 3  10.9.6.1 (10.9.6.1)  0.471 ms  0.463 ms\n 4  lax-b6-link.ip.twelve99.net (62.115.164.218)  0.339 ms  0.427 ms\n 5  lax-bb1-link.ip.twelve99.net (62.115.112.238)  0.720 ms  0.707 ms\n 6  sjo-bb3-link.ip.twelve99.net (62.115.139.151)  160.014 ms  159.997 ms\n 7  den-bb1-link.ip.twelve99.net (62.115.139.105)  36.917 ms  36.902 ms\n 8  * *\n 9  nyk-bb5-link.ip.twelve99.net (62.115.139.32)  152.905 ms  152.898 ms\n10  rest-bb1-link.ip.twelve99.net (62.115.139.35)  80.687 ms  80.764 ms\n11  nyk-bb5-link.ip.twelve99.net (62.115.139.34)  84.135 ms  84.167 ms\n12  ldn-bb1-link.ip.twelve99.net (62.115.139.245)  182.116 ms *\n13  ldn-b2-link.ip.twelve99.net (62.115.122.189)  161.601 ms  161.594 ms\n14  jisc-ic-345131.ip.twelve99-cust.net (62.115.175.131)  155.150 ms  155.076 ms\n15  ae24.londhx-sbr1.ja.net (146.97.35.197)  155.423 ms  155.226 ms\n16  ae29.londpg-sbr2.ja.net (146.97.33.2)  156.041 ms  155.964 ms\n17  ae26.londpg-ban1.ja.net (146.97.35.234)  155.630 ms  155.550 ms\n18  ae25.londpg-lar1.ja.net (146.97.36.46)  155.572 ms  155.538 ms\n19  genome.londpg-lar1.ja.net (146.97.41.222)  154.833 ms  154.730 ms\n20  * *"
+}

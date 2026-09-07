@@ -1,0 +1,25 @@
+{
+  "city": "Mumbai",
+  "country": "IN",
+  "target": "www.ufpr.br",
+  "probe": {
+    "continent": "AS",
+    "region": "Southern Asia",
+    "country": "IN",
+    "state": null,
+    "city": "Mumbai",
+    "asn": 31898,
+    "longitude": 72.88,
+    "latitude": 19.07,
+    "network": "Oracle",
+    "tags": [
+      "oci-ap-mumbai-1",
+      "oci",
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.ufpr.br (200.17.209.3), 20 hops max, 60 byte packets\n 1  _gateway (140.91.204.51)  0.183 ms  0.133 ms\n 2  125.17.12.178 (125.17.12.178)  1.110 ms  1.104 ms\n 3  125.17.12.177 (125.17.12.177)  80.607 ms  80.598 ms\n 4  116.119.164.78 (116.119.164.78)  107.763 ms  107.749 ms\n 5  as1916.saopaulo.sp.ix.br (187.16.216.4)  238.256 ms  238.245 ms\n 6  cpr1-csp1-100g-brdigital.bkb.rnp.br (170.79.213.206)  254.271 ms *\n 7  bpr1-cpr1.bkb.rnp.br (170.79.214.61)  243.365 ms  243.354 ms\n 8  200.238.139.18 (200.238.139.18)  244.254 ms  244.335 ms\n 9  * 200.19.74.126 (200.19.74.126)  241.804 ms\n10  * *\n11  www.ufpr.br (200.17.209.3)  243.120 ms *"
+}

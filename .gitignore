@@ -23,3 +23,12 @@ tmp
 temp
 artifacts
 screenshots
+playwright-report
+test-results
+
+# PeeringDB-derived data: usable for troubleshooting, not to be passed on in bulk (npm run data:refresh -- peeringdb)
+server/data/*.json
+# GeoIP answers cached by the bench
+bench/geo-cache.json
+# Serena tool state
+.serena/

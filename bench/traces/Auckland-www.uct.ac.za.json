@@ -1,0 +1,25 @@
+{
+  "city": "Auckland",
+  "country": "NZ",
+  "target": "www.uct.ac.za",
+  "probe": {
+    "continent": "OC",
+    "region": "Australia and New Zealand",
+    "country": "NZ",
+    "state": null,
+    "city": "Auckland",
+    "asn": 61138,
+    "longitude": 174.76,
+    "latitude": -36.85,
+    "network": "Zappie Host",
+    "tags": [
+      "datacenter-network",
+      "u-minoplhy"
+    ],
+    "resolvers": [
+      "9.9.9.9",
+      "1.1.1.1"
+    ]
+  },
+  "raw": "traceroute to www.uct.ac.za (137.158.159.192), 20 hops max, 60 byte packets\n 1  _gateway (103.208.85.1)  0.172 ms  0.160 ms\n 2  10.128.0.2 (10.128.0.2)  0.136 ms *\n 3  te0-0-0-0.250.nr61.b078125-0.akl01.atlas.cogentco.com (154.18.104.16)  1.116 ms  1.114 ms\n 4  be3851.rcr61.b073288-1.akl01.atlas.cogentco.com (154.24.62.185)  0.728 ms  0.907 ms\n 5  be6282.ccr71.akl01.atlas.cogentco.com (154.54.170.133)  1.408 ms  1.406 ms\n 6  be5436.ccr51.pdx02.atlas.cogentco.com (154.54.162.45)  127.821 ms  127.845 ms\n 7  be2467.ccr22.pdx01.atlas.cogentco.com (154.54.46.161)  128.602 ms  128.600 ms\n 8  be3160.ccr22.sfo01.atlas.cogentco.com (154.54.89.142)  142.015 ms  142.013 ms\n 9  be3670.ccr41.sjc03.atlas.cogentco.com (154.54.43.14)  143.351 ms  143.349 ms\n10  ae-26.a03.snjsca04.us.bb.gin.ntt.net (129.250.8.41)  143.057 ms  143.056 ms\n11  ae-1.r27.snjsca04.us.bb.gin.ntt.net (129.250.5.226)  143.246 ms  143.335 ms\n12  ae-8.r23.dllstx14.us.bb.gin.ntt.net (129.250.4.155)  199.429 ms  199.426 ms\n13  ae-18.r22.dllstx14.us.bb.gin.ntt.net (129.250.3.20)  320.527 ms  320.498 ms\n14  ae-3.r24.miamfl02.us.bb.gin.ntt.net (129.250.2.54)  326.523 ms  326.356 ms\n15  ae-18.a02.miamfl02.us.bb.gin.ntt.net (129.250.3.79)  237.907 ms  239.875 ms\n16  ce-2-0-2.a02.miamfl02.us.ce.gin.ntt.net (129.250.200.114)  239.949 ms  240.105 ms\n17  et-0-0-1-66.rt04.bb.ampath.net (170.39.8.30)  240.164 ms  239.689 ms\n18  187-185-103-190.ampath.net (190.103.185.187)  400.269 ms  399.614 ms\n19  et-0-0-1-0-cpt7-pe1.net.tenet.ac.za (155.232.64.70)  399.671 ms  399.423 ms\n20  154.114.124.1 (154.114.124.1)  399.936 ms  399.937 ms"
+}

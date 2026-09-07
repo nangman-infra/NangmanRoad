@@ -24,3 +24,7 @@ tmp
 temp
 artifacts
 screenshots
+
+.serena
+playwright-report
+test-results

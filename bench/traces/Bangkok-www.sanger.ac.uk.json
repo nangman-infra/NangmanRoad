@@ -1,0 +1,28 @@
+{
+  "city": "Bangkok",
+  "country": "TH",
+  "target": "www.sanger.ac.uk",
+  "probe": {
+    "continent": "AS",
+    "region": "South-eastern Asia",
+    "country": "TH",
+    "state": null,
+    "city": "Bangkok",
+    "asn": 133481,
+    "longitude": 100.5,
+    "latitude": 13.75,
+    "network": "AIS Fibre",
+    "tags": [
+      "eyeball-network",
+      "u-bbcnwdev",
+      "u-bbcnwdev:twa-bng01hw",
+      "u-bbcnwdev:bng"
+    ],
+    "resolvers": [
+      "115.178.58.10",
+      "115.178.58.26",
+      "2405:9800:a:1::10"
+    ]
+  },
+  "raw": "traceroute to www.sanger.ac.uk (193.62.203.105), 20 hops max, 60 byte packets\n 1  _gateway (192.168.88.1)  0.050 ms  0.006 ms\n 2  100.64.152.153 (100.64.152.153)  5.331 ms  5.294 ms\n 3  58.64.112.53 (58.64.112.53)  2.363 ms 58.64.112.55 (58.64.112.55)  2.339 ms\n 4  10.0.212.108 (10.0.212.108)  1.389 ms  1.384 ms\n 5  58.64.112.68 (58.64.112.68)  2.089 ms  2.084 ms\n 6  58.64.112.21 (58.64.112.21)  8.862 ms  8.938 ms\n 7  * *\n 8  103.14.246.202 (103.14.246.202)  27.974 ms  27.969 ms\n 9  linx-juniper.sg.gs (195.66.226.38)  181.882 ms  181.879 ms\n10  linx-gw1.ja.net (195.66.224.15)  184.172 ms  184.160 ms\n11  ae23.londtt-sbr1.ja.net (146.97.35.169)  184.514 ms  184.487 ms\n12  ae28.londtw-sbr2.ja.net (146.97.33.62)  184.677 ms  184.661 ms\n13  ae30.londpg-sbr2.ja.net (146.97.33.5)  188.085 ms  188.077 ms\n14  ae26.londpg-ban1.ja.net (146.97.35.234)  194.071 ms  194.064 ms\n15  ae25.londpg-lar1.ja.net (146.97.36.46)  187.911 ms  187.834 ms\n16  genome.londpg-lar1.ja.net (146.97.41.222)  189.390 ms  189.434 ms\n17  * *\n18  www.sanger.ac.uk (193.62.203.105)  190.775 ms  190.729 ms"
+}

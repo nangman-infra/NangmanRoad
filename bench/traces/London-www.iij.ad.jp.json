@@ -1,0 +1,25 @@
+{
+  "city": "London",
+  "country": "GB",
+  "target": "www.iij.ad.jp",
+  "probe": {
+    "continent": "EU",
+    "region": "Northern Europe",
+    "country": "GB",
+    "state": null,
+    "city": "London",
+    "asn": 31898,
+    "longitude": -0.13,
+    "latitude": 51.51,
+    "network": "Oracle",
+    "tags": [
+      "oci-uk-london-1",
+      "oci",
+      "eyeball-network"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.iij.ad.jp (202.232.2.180), 20 hops max, 60 byte packets\n 1  _gateway (140.91.201.68)  0.185 ms  0.142 ms\n 2  217.163.47.106 (217.163.47.106)  0.636 ms  0.758 ms\n 3  ae52.edge7.London1.Level3.net (217.163.47.105)  14.800 ms  14.753 ms\n 4  ae2.2.ear2.lon15.neo.colt.net (171.75.9.125)  1.315 ms  1.342 ms\n 5  210.130.133.58 (210.130.133.58)  1.521 ms  1.512 ms\n 6  lax002bb01.IIJ.Net (58.138.83.190)  156.628 ms  156.614 ms\n 7  osk011bb00.IIJ.Net (58.138.84.217)  244.327 ms  244.318 ms\n 8  osk008agr02.iij.net (210.130.16.25)  253.781 ms  253.874 ms\n 9  www.iij.ad.jp (202.232.2.180)  244.853 ms *"
+}

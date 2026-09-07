@@ -1,0 +1,24 @@
+{
+  "city": "Dubai",
+  "country": "AE",
+  "target": "overclockers.com.au",
+  "probe": {
+    "continent": "AS",
+    "region": "Western Asia",
+    "country": "AE",
+    "state": null,
+    "city": "Dubai",
+    "asn": 9009,
+    "longitude": 55.31,
+    "latitude": 25.08,
+    "network": "M247",
+    "tags": [
+      "eyeball-network",
+      "u-nocwedos"
+    ],
+    "resolvers": [
+      "private"
+    ]
+  },
+  "raw": "traceroute to overclockers.com.au (27.131.102.2), 20 hops max, 60 byte packets\n 1  _gateway (146.70.19.65)  14.816 ms  14.777 ms\n 2  irb-1906.agg1v.dxb1.ae.m247.ro (77.243.185.227)  27.339 ms  27.333 ms\n 3  ae101-3101.bb1.dxb1.ae.m247.ro (83.97.21.128)  3.897 ms  3.893 ms\n 4  151.248.103.156 (151.248.103.156)  0.708 ms  0.788 ms\n 5  151.248.96.192 (151.248.96.192)  120.797 ms  120.792 ms\n 6  decix.micron21.com (80.81.194.191)  260.644 ms  260.772 ms\n 7  * *\n 8  * *\n 9  * *\n10  * *\n11  * *\n12  * *\n13  overclockers.com.au (27.131.102.2)  443.705 ms  443.692 ms"
+}

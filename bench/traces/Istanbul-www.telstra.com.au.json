@@ -1,0 +1,25 @@
+{
+  "city": "Istanbul",
+  "country": "TR",
+  "target": "www.telstra.com.au",
+  "probe": {
+    "continent": "AS",
+    "region": "Western Asia",
+    "country": "TR",
+    "state": null,
+    "city": "Istanbul",
+    "asn": 136907,
+    "longitude": 28.95,
+    "latitude": 41.01,
+    "network": "HUAWEI CLOUDS",
+    "tags": [
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "private",
+      "private",
+      "2405:f080:1800:16:ffff:ffff:ffff:fffe"
+    ]
+  },
+  "raw": "traceroute to www.telstra.com.au (3.169.85.122), 20 hops max, 60 byte packets\n 1  * *\n 2  * *\n 3  * *\n 4  * *\n 5  26.177.1.131 (26.177.1.131)  0.686 ms  0.687 ms\n 6  * *\n 7  172.16.153.62 (172.16.153.62)  1.226 ms  1.222 ms\n 8  212.12.143.13 (212.12.143.13)  1.666 ms  1.793 ms\n 9  10.135.55.65 (10.135.55.65)  1.704 ms  1.849 ms\n10  * *\n11  * *\n12  * *\n13  * *\n14  www.telstra.com.au (3.169.85.122)  4.219 ms  4.163 ms"
+}

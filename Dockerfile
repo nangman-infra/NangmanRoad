@@ -16,6 +16,10 @@ ARG VITE_CARTO_API_KEY="cb1_2vcr_1_934e7511f075672d3c38f898"
 ENV VITE_CARTO_API_KEY=$VITE_CARTO_API_KEY
 
 COPY . .
+# PeeringDB's facility, exchange and organisation data is fetched here, not kept in the
+# repository (its acceptable use policy allows troubleshooting use, not bulk redistribution).
+# A failed fetch leaves the files out; the server then places hops on the other evidence.
+RUN npm run data:refresh -- peeringdb || echo "PeeringDB data not fetched; hop placement will run without it"
 RUN npm run build
 
 FROM node:22-alpine AS runner
@@ -35,6 +39,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder --chown=nangman:nodejs /app/dist ./dist
 COPY --from=builder --chown=nangman:nodejs /app/dist-server ./dist-server
+COPY --from=builder --chown=nangman:nodejs /app/server/data ./server/data
 
 USER nangman
 

@@ -1,0 +1,25 @@
+{
+  "city": "Tel Aviv",
+  "country": "IL",
+  "target": "www.ufpr.br",
+  "probe": {
+    "continent": "AS",
+    "region": "Western Asia",
+    "country": "IL",
+    "state": null,
+    "city": "Tel Aviv",
+    "asn": 202422,
+    "longitude": 34.89,
+    "latitude": 32.09,
+    "network": "G-Core Labs",
+    "tags": [
+      "datacenter-network",
+      "u-jimaek"
+    ],
+    "resolvers": [
+      "95.85.95.85",
+      "2.56.220.2"
+    ]
+  },
+  "raw": "traceroute to www.ufpr.br (200.17.209.3), 20 hops max, 60 byte packets\n 1  _gateway (5.188.227.3)  0.166 ms  0.139 ms\n 2  10.255.29.241 (10.255.29.241)  0.203 ms  0.264 ms\n 3  185.185.135.20 (185.185.135.20)  0.217 ms  0.212 ms\n 4  partner-p.cloudlease.net.il (31.154.208.205)  0.222 ms  0.217 ms\n 5  * *\n 6  * *\n 7  82.102.129.226 (82.102.129.226)  37.765 ms  37.731 ms\n 8  * *\n 9  be3077.ccr31.bio02.atlas.cogentco.com (154.54.39.225)  60.691 ms  60.728 ms\n10  port-channel2252.ccr91.dca04.atlas.cogentco.com (154.54.47.137)  129.307 ms  129.290 ms\n11  be3482.ccr41.atl01.atlas.cogentco.com (154.54.169.178)  146.066 ms  146.066 ms\n12  be5576.ccr81.mia03.atlas.cogentco.com (154.54.47.50)  158.898 ms  158.998 ms\n13  be2085.ccr41.mia03.atlas.cogentco.com (154.54.167.185)  157.734 ms  157.719 ms\n14  38.88.165.74 (38.88.165.74)  157.700 ms  157.640 ms\n15  csp2-mia1-atl.bkb.rnp.br (200.143.255.90)  262.619 ms  262.667 ms\n16  cpr1-csp2-tlb.bkb.rnp.br (170.79.213.109)  269.976 ms  269.945 ms\n17  bpr1-cpr1.bkb.rnp.br (170.79.214.61)  269.267 ms  269.235 ms\n18  200.238.139.18 (200.238.139.18)  269.570 ms  269.542 ms\n19  200.19.74.126 (200.19.74.126)  268.820 ms  268.823 ms\n20  * *"
+}

@@ -1,0 +1,24 @@
+{
+  "city": "New York",
+  "country": "US",
+  "target": "overclockers.com.au",
+  "probe": {
+    "continent": "NA",
+    "region": "Northern America",
+    "country": "US",
+    "state": "NY",
+    "city": "New York",
+    "asn": 14061,
+    "longitude": -74.14,
+    "latitude": 40.83,
+    "network": "DigitalOcean",
+    "tags": [
+      "datacenter-network"
+    ],
+    "resolvers": [
+      "private",
+      "1.1.1.1"
+    ]
+  },
+  "raw": "traceroute to overclockers.com.au (27.131.102.2), 20 hops max, 60 byte packets\n 1  _gateway (162.243.189.145)  2.700 ms  2.700 ms\n 2  143.244.192.168 (143.244.192.168)  2.808 ms  2.885 ms\n 3  ae29.sdr1.us-ewr1.as14061.net (143.244.225.92)  3.281 ms  3.171 ms\n 4  ae5.iar2.us-ewr1.as14061.net (143.244.225.21)  2.986 ms  3.132 ms\n 5  ae-18.a01.nwrknj03.us.bb.gin.ntt.net (157.238.227.80)  3.964 ms  3.961 ms\n 6  ae-1.r23.nwrknj03.us.bb.gin.ntt.net (129.250.3.24)  113.911 ms  113.906 ms\n 7  ae-10.r24.chcgil09.us.bb.gin.ntt.net (129.250.2.166)  23.010 ms  23.069 ms\n 8  ae-1.r23.dllstx14.us.bb.gin.ntt.net (129.250.4.150)  42.851 ms  42.848 ms\n 9  ae-18.r22.dllstx14.us.bb.gin.ntt.net (129.250.3.20)  147.724 ms  147.745 ms\n10  * *\n11  ae-2.a03.lsanca07.us.bb.gin.ntt.net (129.250.3.91)  72.362 ms  72.309 ms\n12  xe-0-5-0-2.a03.lsanca07.us.ce.gin.ntt.net (128.241.7.23)  77.620 ms  77.660 ms\n13  * *\n14  * *\n15  * *\n16  * *\n17  overclockers.com.au (27.131.102.2)  234.004 ms  233.953 ms"
+}

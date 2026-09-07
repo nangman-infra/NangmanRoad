@@ -1,0 +1,26 @@
+{
+  "city": "Jakarta",
+  "country": "ID",
+  "target": "www.ucalgary.ca",
+  "probe": {
+    "continent": "AS",
+    "region": "South-eastern Asia",
+    "country": "ID",
+    "state": null,
+    "city": "Jakarta",
+    "asn": 139994,
+    "longitude": 106.75,
+    "latitude": -6.22,
+    "network": "XL Axiata",
+    "tags": [
+      "eyeball-network",
+      "u-trihatmaja"
+    ],
+    "resolvers": [
+      "private",
+      "private",
+      "private"
+    ]
+  },
+  "raw": "traceroute to www.ucalgary.ca (136.159.96.125), 20 hops max, 60 byte packets\n 1  _gateway (10.10.1.1)  0.401 ms  0.415 ms\n 2  192.168.1.1 (192.168.1.1)  1.054 ms *\n 3  * *\n 4  * *\n 5  if-ge-10-3-8-0.tcore1.svq-singapore.as6453.net (180.87.96.197)  18.843 ms  19.260 ms\n 6  ix-hge-0-0-0-31.ecore1.svq-singapore.as6453.net (180.87.96.196)  20.129 ms *\n 7  * *\n 8  * *\n 9  * *\n10  if-bundle-6-2.qcore2.esv00-santaclara.as6453.net (180.87.151.41)  191.528 ms *\n11  64.86.197.99 (64.86.197.99)  207.470 ms  207.432 ms\n12  ae20.cr4-sea2.ip4.gtt.net (89.149.130.54)  213.026 ms  210.275 ms\n13  ip4.gtt.net (209.120.141.210)  224.473 ms  224.265 ms\n14  rc1so-be82.cg.shawcable.net (66.163.76.10)  245.044 ms  245.227 ms\n15  * *\n16  fw1uofc.cg.bigpipeinc.com (206.174.203.106)  242.765 ms  242.662 ms\n17  h66-244-233-20.bigpipeinc.com (66.244.233.20)  243.548 ms  243.718 ms\n18  h77.gpvpn.ucalgary.ca (136.159.199.77)  243.605 ms  243.532 ms\n19  * *\n20  * *"
+}
