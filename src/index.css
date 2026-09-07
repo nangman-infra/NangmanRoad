@@ -1392,6 +1392,7 @@ input:focus-visible {
 .packet-map-packet-wrap {
   background: transparent;
   border: 0;
+  transition: opacity 320ms ease;
 }
 
 .packet-map-packet {
@@ -1741,9 +1742,6 @@ input:focus-visible {
 }
 
 /* ── Packet arrival ripple ─────────────────────────────────────────────── */
-.packet-map-packet-wrap {
-  transition: opacity 320ms ease;
-}
 .packet-map-ripple-wrap {
   background: transparent;
   border: 0;

@@ -647,6 +647,7 @@ function parseRawHop(line: string): HopResult | undefined {
   const rttMs = metrics.avgRtt === undefined ? minimumRtt(tries) : Math.round(metrics.avgRtt);
   const hostname = rawHopHostname(tokens, waitingForReply);
   const loss = metrics.loss ?? (waitingForReply || rest.includes("*") ? 100 : 0);
+  const lastTry = tries.at(-1);
 
   return {
     hopNumber,
@@ -655,7 +656,7 @@ function parseRawHop(line: string): HopResult | undefined {
     ip,
     rttMs,
     sent: metrics.sent ? Math.trunc(metrics.sent) : undefined,
-    lastMs: tries.length > 0 ? Math.round(tries[tries.length - 1]) : rttMs,
+    lastMs: lastTry === undefined ? rttMs : Math.round(lastTry),
     bestMs: tries.length > 0 ? rttMs : undefined,
     worstMs: tries.length > 0 ? Math.round(Math.max(...tries)) : undefined,
     jitterMs: metrics.jitterMs === undefined ? undefined : Math.round(metrics.jitterMs),

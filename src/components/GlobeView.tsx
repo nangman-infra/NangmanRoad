@@ -303,7 +303,7 @@ function thinned(path: LatLng[]): LatLng[] {
   const kept: LatLng[] = [];
 
   path.forEach((point, index) => {
-    const last = kept[kept.length - 1];
+    const last = kept.at(-1);
     const apart = last ? Math.hypot(point[0] - last[0], point[1] - last[1]) : Infinity;
 
     if (apart === 0) return;
@@ -364,7 +364,7 @@ function landingPoints(legs: GlobeLeg[]): GlobePoint[] {
   for (const leg of legs) {
     if (leg.kind !== "sea") continue;
 
-    for (const [name, point] of [[leg.from, leg.path[0]], [leg.to, leg.path[leg.path.length - 1]]] as Array<[string | undefined, LatLng | undefined]>) {
+    for (const [name, point] of [[leg.from, leg.path[0]], [leg.to, leg.path.at(-1)]] as Array<[string | undefined, LatLng | undefined]>) {
       if (!name || !point || stations.has(name)) continue;
 
       stations.set(name, {
@@ -908,7 +908,7 @@ export default function GlobeView({ points, legs, theme, cables, shown }: GlobeV
       current.globe.pauseAnimation();
 
       if (current.host.parentNode === container) {
-        container.removeChild(current.host);
+        current.host.remove();
       }
 
       current.globe.width(2).height(2);

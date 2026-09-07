@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, ChevronDown, ExternalLink, Mail, Map as MapIcon, Moon, Sun, Terminal, Users } from "lucide-react";
 import type {
   HopResult,
@@ -157,23 +157,24 @@ export function App() {
   const [theme, setTheme] = useState<ThemeMode>(storedTheme);
   // Set for the plain functions before anything renders in it, then kept in state so the
   // page re-renders in the new language.
-  const [lang, setLangState] = useState<Lang>(() => {
+  const [lang, setLang] = useState<Lang>(() => {
     const initial = detectLang();
 
     setCurrentLang(initial);
 
     return initial;
   });
-  const setLang = (next: Lang) => {
+  const changeLang = useCallback((next: Lang) => {
     setCurrentLang(next);
-    setLangState(next);
+    setLang(next);
 
     try {
       globalThis.localStorage.setItem(LANG_STORAGE_KEY, next);
     } catch {
       // Storage disabled: the choice lasts for the visit.
     }
-  };
+  }, []);
+  const language = useMemo(() => ({ lang, setLang: changeLang }), [lang, changeLang]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -479,7 +480,7 @@ export function App() {
   }
 
   return (
-    <LangContext.Provider value={{ lang, setLang }}>
+    <LangContext.Provider value={language}>
       <AppShell journeyState={journeyState} theme={theme}>
         <main className={mainClassName}>{pageContent}</main>
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2">
@@ -488,7 +489,7 @@ export function App() {
             type="button"
             aria-label={t("lang.toggle")}
             title={t("lang.toggle")}
-            onClick={() => setLang(lang === "ko" ? "en" : "ko")}
+            onClick={() => changeLang(lang === "ko" ? "en" : "ko")}
             className="theme-toggle theme-toggle-button inline-flex h-12 items-center justify-center rounded-full border px-4 text-sm font-semibold shadow-2xl backdrop-blur"
           >
             {lang === "ko" ? "KR" : "EN"}

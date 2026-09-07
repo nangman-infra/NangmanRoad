@@ -38,7 +38,7 @@ export function speedBand(kmps: number): "slow" | "average" | "fast" {
 
 // km/s for a leg, or undefined when the round trip did not grow across it.
 export function segmentSpeed(km: number, rttIncreaseMs: number | undefined) {
-  if (rttIncreaseMs === undefined || !(rttIncreaseMs > 0) || !Number.isFinite(km) || km <= 0) {
+  if (rttIncreaseMs === undefined || Number.isNaN(rttIncreaseMs) || rttIncreaseMs <= 0 || !Number.isFinite(km) || km <= 0) {
     return undefined;
   }
 
@@ -49,8 +49,8 @@ export function segmentSpeed(km: number, rttIncreaseMs: number | undefined) {
 
 function mix(from: string, to: string, t: number) {
   const channel = (offset: number) => {
-    const a = parseInt(from.slice(offset, offset + 2), 16);
-    const b = parseInt(to.slice(offset, offset + 2), 16);
+    const a = Number.parseInt(from.slice(offset, offset + 2), 16);
+    const b = Number.parseInt(to.slice(offset, offset + 2), 16);
 
     return Math.round(a + (b - a) * t).toString(16).padStart(2, "0");
   };
@@ -74,7 +74,7 @@ export function speedColor(kmps: number | undefined, theme: "light" | "dark") {
     }
   }
 
-  return stops[stops.length - 1][1];
+  return (stops.at(-1) ?? stops[0])[1];
 }
 
 // The hot centre of a neon line: the leg colour pulled toward white.
@@ -84,7 +84,7 @@ export function lighten(hex: string, amount: number) {
 
 export function speedGradient(theme: "light" | "dark") {
   const stops = STOPS[theme];
-  const max = stops[stops.length - 1][0];
+  const max = (stops.at(-1) ?? stops[0])[0];
 
   return `linear-gradient(90deg, ${stops.map(([speed, color]) => `${color} ${((100 * speed) / max).toFixed(1)}%`).join(", ")})`;
 }

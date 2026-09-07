@@ -65,7 +65,7 @@ export function toCartesian(lat: number, lng: number, altitude: number): [number
 // three's colour management reads vertex colours as linear; the palette is sRGB.
 export function linearRgb(hex: string): [number, number, number] {
   const channel = (offset: number) => {
-    const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
 
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
@@ -107,7 +107,7 @@ function nearestJunctions(lines: LatLng[][]): Junction[] {
   const reach = JOIN_SEA_KM / 111.2 + 0.5;
 
   lines.forEach((line, index) => {
-    for (const end of [line[0], line[line.length - 1]]) {
+    for (const end of [line[0], line.at(-1)]) {
       if (!end || Math.abs(end[1]) >= 179.9) continue;
 
       let nearest: { km: number; at: LatLng; isEnd: boolean } | undefined;
@@ -176,7 +176,7 @@ function cableLayout(lines: LatLng[][], mask: LandMask): { keep: Set<number>; jo
     for (const index of [...keep]) {
       const line = lines[index];
 
-      for (const end of [line[0], line[line.length - 1]]) {
+      for (const end of [line[0], line.at(-1)]) {
         if (!end || Math.abs(end[1]) >= 179.9 || coincident(index, end)) continue;
 
         const junction = junctions.find((entry) => entry.line === index && entry.end === end);

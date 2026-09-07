@@ -28,7 +28,7 @@ export function countryFlag(country: string) {
   const REGIONAL_INDICATOR_A = 0x1f1e6;
 
   return String.fromCodePoint(
-    ...[...country.toUpperCase()].map((letter) => REGIONAL_INDICATOR_A + letter.charCodeAt(0) - 65)
+    ...[...country.toUpperCase()].map((letter) => REGIONAL_INDICATOR_A + (letter.codePointAt(0) ?? 0) - 65)
   );
 }
 

@@ -169,7 +169,7 @@ function toGlobePoints(points: GeoPoint[], unreached?: Unreached): GlobePoint[] 
     rttMs: point.rttMs,
     operators: point.operators
   }));
-  const last = globePoints[globePoints.length - 1];
+  const last = globePoints.at(-1);
 
   if (unreached && last) {
     globePoints.push({
@@ -348,7 +348,7 @@ function animatePacket(params: { map: L.Map; layer: L.LayerGroup; parts: L.LatLn
     markers.forEach((marker) => marker.remove());
   };
 }
-import type { HopResult, MeasurementResult, MeasurementSource, MeasurementStatus, TraceMode } from "../../shared/types";
+import type { HopResult, MeasurementSource, MeasurementStatus, TraceMode } from "../../shared/types";
 
 type RouteVisualizationProps = Readonly<{
   mode: TraceMode;
@@ -385,10 +385,10 @@ interface RoutePlace {
   key: string;
   lat: number;
   lng: number;
-  confidence?: HopResult["locationConfidence"];
+  confidence?: NonNullable<HopResult["locationConfidence"]>;
   evidence?: string[];
-  precision?: HopResult["locationPrecision"];
-  source?: HopResult["locationSource"];
+  precision?: NonNullable<HopResult["locationPrecision"]>;
+  source?: NonNullable<HopResult["locationSource"]>;
 }
 
 interface AsRouteGroup {
@@ -1521,7 +1521,7 @@ function tooltipContent(point: GeoPoint) {
 }
 
 function addRouteMarkers(layer: L.LayerGroup, routePoints: GeoPoint[], legs: GlobeLeg[], theme: RouteVisualizationProps["theme"], unreached?: Unreached) {
-  const last = routePoints[routePoints.length - 1];
+  const last = routePoints.at(-1);
 
   if (unreached && last) {
     const badge = document.createElement("span");

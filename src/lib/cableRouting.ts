@@ -92,10 +92,16 @@ const OPERATOR_ALIASES: Record<string, string> = {
   "at t": "at&t"
 };
 
+// Two codes as one key, whichever way round they came: the sets below are written that way.
+const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+// Plain code-unit order, said out loud, because a bare sort() means something else for numbers.
+const compareCode = (a: string, b: string) => (a < b ? -1 : Number(a > b));
+
 export function operatorKey(name: string) {
   const words = name
     .toLowerCase()
-    .replace(/&/g, " ")
+    .replaceAll("&", " ")
     .replace(/[^a-z0-9 ]+/g, " ")
     .split(/\s+/)
     .filter((word) => word && !LEGAL_WORDS.has(word));
@@ -164,7 +170,14 @@ export class LandMask {
     // Rings that share a border vertex are one landmass; Natural Earth draws both sides of a
     // border with the same vertices.
     const parent = rings.map((_ring, index) => index);
-    const find = (index: number): number => (parent[index] === index ? index : (parent[index] = find(parent[index])));
+    const find = (index: number): number => {
+      if (parent[index] === index) return index;
+
+      // Path compression: every node on the way up points at the root afterwards.
+      parent[index] = find(parent[index]);
+
+      return parent[index];
+    };
     const owner = new Map<string, number>();
 
     rings.forEach(({ ring }, index) => {
@@ -307,9 +320,9 @@ const NO_FIBRE_BORDERS = new Set(["IL|LB", "IL|SY", "CN|CN-TW"]);
 function noLandRoute(a: Place, b: Place) {
   if (a.country === b.country) return false;
   if (SEA_ONLY_COUNTRIES.has(a.country) || SEA_ONLY_COUNTRIES.has(b.country)) return true;
-  if (NO_FIBRE_BORDERS.has([a.country, b.country].sort().join("|"))) return true;
+  if (NO_FIBRE_BORDERS.has(pairKey(a.country, b.country))) return true;
 
-  return NO_LAND_BETWEEN.has([a.continent, b.continent].sort().join("|"));
+  return NO_LAND_BETWEEN.has(pairKey(a.continent, b.continent));
 }
 
 // Open water longer than this along the straight line is more than a bridge or a tunnel
@@ -594,7 +607,7 @@ export class CableGraph {
     this.bridgeLandings();
 
     for (const [cable, ids] of this.cableEnds) {
-      const countries = [...new Set(ids.flatMap((id) => (this.nodes[id].landing ? [this.places.get(id)?.country] : [])).filter((country): country is string => Boolean(country)))].sort();
+      const countries = [...new Set(ids.flatMap((id) => (this.nodes[id].landing ? [this.places.get(id)?.country] : [])).filter((country): country is string => Boolean(country)))].sort(compareCode);
       const pair = countries.join("|");
 
       if (countries.length === 2 && NO_FIBRE_BORDERS.has(pair)) {
@@ -912,7 +925,7 @@ export class CableGraph {
         const km = haversineKm(a, b);
         const steps = Math.max(1, Math.ceil(km / LAND_SAMPLE_KM));
         const points = greatCircle(a, b, steps);
-        const base = samples[samples.length - 1].km;
+        const base = samples.at(-1)?.km ?? 0;
 
         points.slice(1).forEach((point, step) => {
           // The line's own vertex, exactly, where the samples reach it: the stretches must
@@ -949,15 +962,15 @@ export class CableGraph {
       // Walk the samples, starting a new piece at every cut; a piece keeps the line's own
       // vertices and the cut points at its ends.
       const pieces: Array<{ land: boolean; path: LatLng[] }> = [{ land: samples[0].land && (cuts.has(0) || [...cuts][0] > 0 && samples.slice(0, [...cuts][0] + 1).every((sample) => sample.land)), path: [samples[0].point] }];
+      let piece = pieces[0];
 
       samples.forEach((sample, index) => {
         if (index === 0) return;
 
-        const piece = pieces[pieces.length - 1];
-
         if (cuts.has(index)) {
           piece.path.push(sample.point);
-          pieces.push({ land: !piece.land, path: [sample.point] });
+          piece = { land: !piece.land, path: [sample.point] };
+          pieces.push(piece);
         } else if (sample.vertex) {
           piece.path.push(sample.point);
         }
@@ -1014,7 +1027,7 @@ export class CableGraph {
     const owned = this.ownedCables(options.operators ?? []);
     // A cable between two countries whose border carries no transit is open to a leg
     // between those two countries and closed to every other.
-    const legPair = fromPlace && toPlace ? [fromPlace.country, toPlace.country].sort().join("|") : undefined;
+    const legPair = fromPlace && toPlace ? pairKey(fromPlace.country, toPlace.country) : undefined;
     const starts = this.landingsNear(from, fromPlace).slice(0, LANDING_CANDIDATES * 8);
 
     if (starts.length === 0) {
@@ -1156,11 +1169,13 @@ export class CableGraph {
       }
     }
 
+    const lastId = ids.at(-1) ?? ids[0];
+
     if (current.sea) {
       close();
-      current = { path: this.overland(at(ids[ids.length - 1]), to), sea: false, cables: [], from: name(ids[ids.length - 1]) };
+      current = { path: this.overland(at(lastId), to), sea: false, cables: [], from: name(lastId) };
     } else {
-      current.path.push(...this.overland(at(ids[ids.length - 1]), to).slice(1));
+      current.path.push(...this.overland(at(lastId), to).slice(1));
     }
 
     endId = undefined;
