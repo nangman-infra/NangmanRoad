@@ -14,8 +14,10 @@ export type HopStatus = "pending" | "ok" | "slow" | "loss" | "timeout";
 export type HopLocationSource =
   | "provider"
   | "reverse_dns"
+  | "ixp"
   | "geoip"
   | "combined"
+  | "rtt_neighbor"
   | "source_probe"
   | "unknown";
 
@@ -32,6 +34,7 @@ export interface MeasurementSource {
   city?: string;
   country?: string;
   asn?: string;
+  network?: string;
   latitude?: number;
   longitude?: number;
   note: string;
@@ -41,6 +44,8 @@ export interface HopResult {
   hopNumber: number;
   asn?: string;
   asName?: string;
+  // The organisation behind the network, as PeeringDB records it.
+  asOrg?: string;
   ip?: string;
   hostname?: string;
   city?: string;
@@ -71,6 +76,10 @@ export interface MeasurementResult {
   confidence: Confidence;
   startedAt: string;
   finishedAt?: string;
+  // The address the probe resolved the target to, and whether any hop answered from it. A
+  // trace that ends on some other router must not have the target's name pinned to it.
+  targetIp?: string;
+  reachedTarget?: boolean;
 }
 
 export type MeasurementEventType =
@@ -113,6 +122,8 @@ export type MeasurementEvent =
 export interface CreateMeasurementRequest {
   target: string;
   mode: TraceMode;
+  /** Probe location id from PROBE_LOCATIONS. Omitted or unknown falls back to the visitor hint. */
+  from?: string;
   visitor?: VisitorContext;
 }
 

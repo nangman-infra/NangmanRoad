@@ -1,4 +1,6 @@
+import { peeringDbSummary } from "./geoInference";
 import path from "node:path";
+import compression from "compression";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
@@ -6,7 +8,7 @@ import { createSession, getSession, subscribe } from "./sessionStore";
 import { rateLimit } from "./rateLimit";
 import { applySecurityHeaders, corsOptions } from "./security";
 import { sendIndexHtml, sendRobotsTxt, sendSitemapXml } from "./seo";
-import { normalizeMode, normalizeTarget } from "./validation";
+import { normalizeMode, normalizeProbeId, normalizeTarget } from "./validation";
 import type { CreateMeasurementRequest, MeasurementEvent } from "../shared/types";
 
 const app = express();
@@ -41,6 +43,7 @@ app.post("/api/measurements", rateLimit, (req, res) => {
     const body = req.body as Partial<CreateMeasurementRequest>;
     const target = normalizeTarget(body.target);
     const mode = normalizeMode(body.mode);
+    const from = normalizeProbeId(body.from);
     const visitor =
       body.visitor && typeof body.visitor === "object"
         ? {
@@ -50,7 +53,7 @@ app.post("/api/measurements", rateLimit, (req, res) => {
           }
         : undefined;
 
-    const session = createSession({ target, mode, visitor });
+    const session = createSession({ target, mode, from, visitor });
     res.status(202).json(session);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid measurement request.";
@@ -93,7 +96,22 @@ app.get("/api/measurements/:id/events", (req, res) => {
   });
 });
 
-app.use(express.static(clientDistDirectory, { index: false }));
+// The route data the browser's worker loads - cables, coastlines, landings, corridors -
+// is a few megabytes of JSON that shrinks to a fifth compressed; the hashed bundles never
+// change under their name, the data files change only with a data refresh.
+app.use(compression());
+app.use(
+  express.static(clientDistDirectory, {
+    index: false,
+    setHeaders(res, filePath) {
+      if (/[\\/]assets[\\/]/.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else if (/[\\/]data[\\/].+\.json$/.test(filePath)) {
+        res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+      }
+    }
+  })
+);
 
 app.get("*", (req, res) => {
   if (req.path.startsWith("/api")) {
@@ -112,4 +130,5 @@ app.use((_req, res) => {
 
 app.listen(port, () => {
   console.log(`Nangman Road listening on http://127.0.0.1:${port}`);
+  console.log(peeringDbSummary());
 });

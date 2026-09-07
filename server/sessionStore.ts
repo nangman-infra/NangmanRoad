@@ -15,6 +15,7 @@ interface Session {
   id: string;
   target: string;
   mode: TraceMode;
+  from?: string;
   status: MeasurementStatus;
   createdAt: number;
   events: MeasurementEvent[];
@@ -86,26 +87,25 @@ function publish(session: Session, event: MeasurementEvent) {
   }
 }
 
-async function runMeasurement(session: Session, visitor?: VisitorContext) {
-  const useDemoOnly = process.env.MEASUREMENT_PROVIDER === "demo";
+// The provider reports a name that does not resolve the same way it reports its own outages.
+// Telling them apart matters: one is a typo the visitor can fix, the other is ours to own.
+function failureMessage(error: unknown, target: string) {
+  const detail = error instanceof Error ? error.message : "";
 
-  try {
-    if (!useDemoOnly) {
-      for await (const event of runGlobalpingMeasurement({
-        id: session.id,
-        target: session.target,
-        mode: session.mode,
-        visitor
-      })) {
-        publish(session, event);
-      }
-      return;
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Live provider unavailable.";
-    console.warn(`Live provider unavailable for ${session.id}. Falling back to demo provider. ${message}`);
+  if (/enotfound|nxdomain|querya |could not resolve|no such host/i.test(detail)) {
+    return `No DNS record found for ${target}. Check the spelling, or enter an IP address.`;
   }
 
+  const budget = /hourly limit reached; resets in (\d+) min/.exec(detail);
+
+  if (budget) {
+    return `This hour's measurement budget is used up. Try again in about ${budget[1]} minutes.`;
+  }
+
+  return "Measurement is temporarily unavailable. Please try again later.";
+}
+
+async function runDemoOnly(session: Session, visitor?: VisitorContext) {
   try {
     for await (const event of runDemoMeasurement({
       id: session.id,
@@ -120,9 +120,38 @@ async function runMeasurement(session: Session, visitor?: VisitorContext) {
     console.warn(`Demo provider unavailable for ${session.id}. ${message}`);
     publish(session, {
       type: "error",
-      payload: {
-        message: "Measurement is temporarily unavailable. Please try again later."
-      }
+      payload: { message: "Measurement is temporarily unavailable. Please try again later." }
+    });
+  }
+}
+
+async function runMeasurement(session: Session, visitor?: VisitorContext) {
+  // Demo data is a deliberate offline mode, never a safety net. A failed measurement used to
+  // fall through to it, so a domain that does not exist came back as a map of RFC 5737
+  // documentation addresses with invented latencies and nothing marking them as fake. Saying
+  // nothing is worse than saying "this failed"; a route the visitor cannot tell from a real
+  // one is worse than both.
+  if (process.env.MEASUREMENT_PROVIDER === "demo") {
+    await runDemoOnly(session, visitor);
+    return;
+  }
+
+  try {
+    for await (const event of runGlobalpingMeasurement({
+      id: session.id,
+      target: session.target,
+      mode: session.mode,
+      from: session.from,
+      visitor
+    })) {
+      publish(session, event);
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown error.";
+    console.warn(`Measurement failed for ${session.id}. ${detail}`);
+    publish(session, {
+      type: "error",
+      payload: { message: failureMessage(error, session.target) }
     });
   }
 }
@@ -130,6 +159,7 @@ async function runMeasurement(session: Session, visitor?: VisitorContext) {
 export function createSession(params: {
   target: string;
   mode: TraceMode;
+  from?: string;
   visitor?: VisitorContext;
 }) {
   cleanupExpiredSessions();
@@ -139,6 +169,7 @@ export function createSession(params: {
     id: nanoid(10),
     target: params.target,
     mode: params.mode,
+    from: params.from,
     status: "starting",
     createdAt: Date.now(),
     events: [],

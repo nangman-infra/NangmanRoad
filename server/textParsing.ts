@@ -126,7 +126,11 @@ export function asnDigitsFromText(value: string) {
     const endDigitIndex = firstNonDigitIndex(value, startDigitIndex);
 
     if (endDigitIndex > startDigitIndex) {
-      return value.slice(startDigitIndex, endDigitIndex);
+      const digits = value.slice(startDigitIndex, endDigitIndex);
+
+      // AS0 is reserved (RFC 7607) and never routes; databases hand it out for peering LANs
+      // and unassigned space. That is "no ASN", not a network to draw on the path.
+      return Number(digits) > 0 ? digits : undefined;
     }
   }
 

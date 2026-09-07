@@ -1,4 +1,5 @@
 import net from "node:net";
+import { findProbeLocation } from "../shared/probes";
 import type { TraceMode } from "../shared/types";
 import {
   isAsciiAlpha,
@@ -165,6 +166,11 @@ export function normalizeTarget(input: unknown): string {
   }
 
   throw new Error("Enter a valid domain or IP address.");
+}
+
+export function normalizeProbeId(input: unknown): string | undefined {
+  // Allow-list lookup, so nothing a caller invents ever reaches the measurement provider.
+  return findProbeLocation(input)?.id;
 }
 
 export function normalizeMode(input: unknown): TraceMode {

@@ -100,69 +100,38 @@ describe("sessionStore", () => {
     unsubscribe();
   });
 
-  it("falls back to demo measurement when the live provider fails", async () => {
+  it("reports a name that does not resolve instead of inventing a route for it", async () => {
     vi.mocked(runGlobalpingMeasurement).mockImplementationOnce(async function* runGlobalpingFailure() {
-      throw new Error("provider unavailable");
-    });
-    vi.mocked(runDemoMeasurement).mockImplementationOnce(async function* runDemoFallback(params) {
-      yield {
-        type: "measurement_started",
-        payload: {
-          id: params.id,
-          mode: params.mode,
-          target: params.target,
-          status: "running",
-          source: {
-            provider: "demo",
-            note: "Measured from a nearby network probe. Demo fallback is active because the live provider was unavailable."
-          },
-          hops: [],
-          confidence: "medium",
-          startedAt: "2026-06-18T00:00:00.000Z"
-        }
-      } satisfies MeasurementEvent;
-      yield {
-        type: "measurement_finished",
-        payload: {
-          id: params.id,
-          mode: params.mode,
-          target: params.target,
-          status: "finished",
-          source: {
-            provider: "demo",
-            note: "Measured from a nearby network probe. Demo fallback is active because the live provider was unavailable."
-          },
-          hops: [],
-          confidence: "medium",
-          startedAt: "2026-06-18T00:00:00.000Z",
-          finishedAt: "2026-06-18T00:00:01.000Z"
-        }
-      } satisfies MeasurementEvent;
+      throw new Error("Globalping measurement failed. queryA ENOTFOUND nope.example");
     });
 
     const created = createSession({
-      mode: "mtr",
-      target: "example.com"
+      mode: "traceout",
+      target: "nope.example"
     });
 
     await vi.waitFor(() => {
-      expect(latestResult(getSession(created.id)!)).toMatchObject({
-        source: {
-          provider: "demo"
-        },
-        status: "finished"
-      });
+      expect(getSession(created.id)?.status).toBe("error");
     });
 
-    expect(runDemoMeasurement).toHaveBeenCalledOnce();
+    const session = getSession(created.id)!;
+    const listener = vi.fn();
+    subscribe(session, listener);
+
+    expect(listener).toHaveBeenCalledWith({
+      type: "error",
+      payload: {
+        message: "No DNS record found for nope.example. Check the spelling, or enter an IP address."
+      }
+    });
+    // The demo provider fabricates hops out of RFC 5737 documentation addresses. A failed
+    // lookup must never reach it, or the visitor gets a route no packet ever took.
+    expect(runDemoMeasurement).not.toHaveBeenCalled();
   });
 
-  it("publishes a safe error when both live and demo providers fail", async () => {
+  it("reports a provider outage without falling back to invented hops", async () => {
     vi.mocked(runGlobalpingMeasurement).mockImplementationOnce(async function* runGlobalpingFailure() {
-      throw new Error("provider unavailable");
-    });
-    vi.mocked(runDemoMeasurement).mockImplementationOnce(async function* runDemoFailure() {
-      throw new Error("demo unavailable");
+      throw new Error("Globalping returned 503");
     });
 
     const created = createSession({
@@ -184,5 +153,25 @@ describe("sessionStore", () => {
         message: "Measurement is temporarily unavailable. Please try again later."
       }
     });
+    expect(runDemoMeasurement).not.toHaveBeenCalled();
+  });
+
+  it("still serves demo data when the operator asks for it explicitly", async () => {
+    process.env.MEASUREMENT_PROVIDER = "demo";
+    vi.mocked(runDemoMeasurement).mockImplementationOnce(async function* runDemoFailure() {
+      throw new Error("demo unavailable");
+    });
+
+    const created = createSession({
+      mode: "traceout",
+      target: "example.com"
+    });
+
+    await vi.waitFor(() => {
+      expect(getSession(created.id)?.status).toBe("error");
+    });
+
+    expect(runDemoMeasurement).toHaveBeenCalledOnce();
+    expect(runGlobalpingMeasurement).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseRawTraceroute, parseResultHops, runGlobalpingMeasurement } from "./globalpingProvider";
+import { parseRawTraceroute, parseResultHops, resetGlobalpingState, runGlobalpingMeasurement } from "./globalpingProvider";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -20,7 +20,10 @@ describe("parseRawTraceroute", () => {
       hostname: "edge.google.com",
       hopNumber: 1,
       ip: "142.250.206.14",
-      rttMs: 21,
+      // The smallest of the three tries: the closest measure of propagation.
+      rttMs: 20,
+      bestMs: 20,
+      worstMs: 23,
       status: "ok"
     });
     expect(hops[1]).toMatchObject({
@@ -149,6 +152,183 @@ describe("parseResultHops", () => {
 });
 
 describe("runGlobalpingMeasurement", () => {
+  it("reports whether any hop answered from the address the probe resolved the target to", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const hop = (ip: string) => ({ resolvedAddress: ip, resolvedHostname: ip, timings: [{ rtt: 5 }] });
+    const finished = (hops: unknown[]) =>
+      new Response(
+        JSON.stringify({
+          status: "finished",
+          results: [{ probe: { city: "Seoul", country: "KR" }, result: { status: "finished", resolvedAddress: "198.51.100.9", hops } }]
+        }),
+        { status: 200 }
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "cut" }), { status: 201 }))
+      .mockResolvedValueOnce(finished([hop("10.0.0.1"), hop("192.0.2.44")]))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "full" }), { status: 201 }))
+      .mockResolvedValueOnce(finished([hop("10.0.0.1"), hop("198.51.100.9")]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcomes: Array<boolean | undefined> = [];
+
+    for (const id of ["cut", "full"]) {
+      const events = runGlobalpingMeasurement({ id, mode: "traceout", target: "example.com" });
+      let pending = events.next();
+      let reached: boolean | undefined;
+
+      // Hop events stream first; the verdict rides on the finished event at the end.
+      for (;;) {
+        await vi.advanceTimersByTimeAsync(1_250);
+        const step = await pending;
+
+        if (step.done) {
+          break;
+        }
+
+        if (step.value.type === "measurement_finished") {
+          reached = step.value.payload.reachedTarget;
+        }
+
+        pending = events.next();
+      }
+
+      outcomes.push(reached);
+    }
+
+    expect(outcomes).toEqual([false, true]);
+    vi.useRealTimers();
+  });
+
+  it("keeps asking the full set of probes as the budget shrinks and explains a 429", async () => {
+    vi.useFakeTimers();
+    resetGlobalpingState();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const created = (id: string, remaining: string) =>
+      new Response(JSON.stringify({ id }), { status: 201, headers: { "x-ratelimit-remaining": remaining, "x-ratelimit-reset": "600" } });
+    const finished = () =>
+      new Response(
+        JSON.stringify({
+          status: "finished",
+          results: [{ probe: { city: "Seoul", country: "KR" }, hops: [{ resolvedAddress: "10.0.0.1", resolvedHostname: "gw", timings: [{ rtt: 1 }] }] }]
+        }),
+        { status: 200 }
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(created("a", "12"))
+      .mockResolvedValueOnce(finished())
+      .mockResolvedValueOnce(created("b", "0"))
+      .mockResolvedValueOnce(finished())
+      .mockResolvedValueOnce(new Response("", { status: 429, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "500" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (const id of ["a", "b"]) {
+      const events = runGlobalpingMeasurement({ id, mode: "traceout", target: "example.com", from: "seoul" });
+      await events.next();
+      const pending = events.next();
+      await vi.advanceTimersByTimeAsync(1_250);
+      await pending;
+    }
+
+    const body = (index: number) => JSON.parse(String(fetchMock.mock.calls[index][1].body));
+    expect(body(0).limit).toBeGreaterThan(1);
+    expect(body(2).limit).toBe(body(0).limit);
+
+    const starved = runGlobalpingMeasurement({ id: "c", mode: "traceout", target: "example.com", from: "seoul" });
+    await starved.next();
+    await expect(starved.next()).rejects.toThrow(/hourly limit reached; resets in 9 min/);
+
+    resetGlobalpingState();
+    vi.useRealTimers();
+  });
+
+  it("widens a single-city country pick to the whole country and keeps a city where the country has two", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    // One answered probe, or the poll loop keeps waiting for a result that never comes.
+    const finished = () =>
+      new Response(
+        JSON.stringify({
+          status: "finished",
+          results: [{ probe: { city: "Seoul", country: "KR" }, hops: [{ resolvedAddress: "10.0.0.1", resolvedHostname: "gw", timings: [{ rtt: 1 }] }] }]
+        }),
+        { status: 200 }
+      );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "kr" }), { status: 201 }))
+      .mockResolvedValueOnce(finished())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "us" }), { status: 201 }))
+      .mockResolvedValueOnce(finished());
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (const from of ["seoul", "losangeles"]) {
+      const events = runGlobalpingMeasurement({ id: from, mode: "traceout", target: "example.com", from });
+      await events.next();
+      const pending = events.next();
+      await vi.advanceTimersByTimeAsync(1_250);
+      await pending.catch(() => undefined);
+    }
+
+    const body = (index: number) => JSON.parse(String(fetchMock.mock.calls[index][1].body));
+    expect(body(0).locations).toEqual([{ country: "KR" }]);
+    expect(body(0).limit).toBeGreaterThan(1);
+    expect(body(2).locations).toEqual([{ city: "Los Angeles", country: "US" }]);
+    vi.useRealTimers();
+  });
+
+  it("keeps the probe whose path answered on the most routers and names it", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const hop = (n: number, ip: string) => ({ resolvedAddress: ip, resolvedHostname: ip, timings: [{ rtt: n }] });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ id: "multi" }), { status: 201 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              status: "finished",
+              results: [
+                { probe: { city: "Seoul", country: "KR", network: "Tencent" }, result: { status: "failed", rawOutput: "probe offline" } },
+                { probe: { city: "Chuncheon", country: "KR", network: "Oracle" }, hops: [hop(1, "10.0.0.1"), hop(240, "198.51.100.9")] },
+                { probe: { city: "Suwon", country: "KR", network: "Korea Telecom" }, hops: [hop(1, "10.0.0.1"), hop(9, "10.0.0.2"), hop(300, "198.51.100.9")] }
+              ]
+            }),
+            { status: 200 }
+          )
+        )
+    );
+
+    const events = runGlobalpingMeasurement({ id: "m", mode: "traceout", target: "example.com" });
+    const seen = [];
+    let pending = events.next();
+
+    for (;;) {
+      await vi.advanceTimersByTimeAsync(1_250);
+      const step = await pending;
+
+      if (step.done) {
+        break;
+      }
+
+      seen.push(step.value);
+      pending = events.next();
+    }
+
+    const finished = seen.find((event) => event.type === "measurement_finished");
+
+    expect(finished?.type).toBe("measurement_finished");
+    expect(finished?.type === "measurement_finished" && finished.payload.source.city).toBe("Suwon");
+    expect(finished?.type === "measurement_finished" && finished.payload.source.network).toBe("Korea Telecom");
+    expect(finished?.type === "measurement_finished" && finished.payload.hops).toHaveLength(3);
+    vi.useRealTimers();
+  });
+
   it("streams started, hop, and finished events from a completed provider response", async () => {
     vi.useFakeTimers();
     process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";

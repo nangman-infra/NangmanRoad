@@ -5,6 +5,7 @@ import type {
   TraceMode,
   VisitorContext
 } from "../../shared/types";
+import { PROBE_LOCATIONS, findProbeLocation } from "../../shared/probes";
 import { enrichHopsWithGeo, measurementConfidence } from "../geoInference";
 import {
   asnDigitsFromText,
@@ -18,6 +19,39 @@ import {
 const DEFAULT_API_URL = "https://api.globalping.io/v1/measurements";
 const PROVIDER_TIMEOUT_MS = 42_000;
 const POLL_INTERVAL_MS = 1_250;
+// Probes in the same city sit on different networks, and the network decides the path: a
+// cloud probe rides a private backbone that answers nothing, a home-ISP probe crosses the
+// public internet router by router. Asking a few and keeping the most talkative path costs
+// no extra wall time because Globalping runs them in parallel.
+const PROBE_CANDIDATES = Number(process.env.GLOBALPING_PROBE_CANDIDATES ?? 3);
+// Globalping meters tests per hour per source address, and the whole site shares one. Every
+// measurement asks the same number of probes regardless - a thinner result is not a fair
+// trade for a fuller budget - so the only thing read back is when the hour resets, to tell a
+// visitor who hits the wall how long to wait.
+let limitResetAt: number | undefined;
+
+export function resetGlobalpingState() {
+  limitResetAt = undefined;
+}
+
+function headerNumber(response: Response, name: string) {
+  const raw = response.headers.get(name);
+  const value = raw === null ? Number.NaN : Number(raw);
+
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function noteRateLimit(response: Response) {
+  const resetSeconds = headerNumber(response, "x-ratelimit-reset");
+
+  if (resetSeconds !== undefined) {
+    limitResetAt = Date.now() + resetSeconds * 1_000;
+  }
+}
+
+function minutesUntilReset() {
+  return limitResetAt === undefined ? 60 : Math.max(1, Math.ceil((limitResetAt - Date.now()) / 60_000));
+}
 const GLOBALPING_MAX_MTR_PACKETS = 16;
 const GLOBALPING_MTR_PROTOCOLS = ["ICMP", "TCP"] as const;
 
@@ -27,6 +61,7 @@ interface GlobalpingMeasurementParams {
   id: string;
   target: string;
   mode: TraceMode;
+  from?: string;
   visitor?: VisitorContext;
 }
 
@@ -57,6 +92,23 @@ function locationMagic(visitor?: VisitorContext) {
   }
 
   return "World";
+}
+
+function requestLocations(measurement: GlobalpingMeasurementParams) {
+  const probe = findProbeLocation(measurement.from);
+
+  if (!probe) {
+    return [{ magic: locationMagic(measurement.visitor) }];
+  }
+
+  // A city pins the pool to a few probes that often share one cloud backbone. Where the
+  // selector lists a single city for the country, the whole country is the pool instead: a
+  // home-ISP probe in the next town crosses the public internet router by router, and the
+  // result names the city it actually ran from. Structured fields either way, so the
+  // provider cannot fuzzy-match the pick somewhere else.
+  const citiesInCountry = PROBE_LOCATIONS.filter((entry) => entry.country === probe.country).length;
+
+  return citiesInCountry > 1 ? [{ city: probe.city, country: probe.country }] : [{ country: probe.country }];
 }
 
 function headers() {
@@ -152,7 +204,7 @@ function normalizeAsn(value: unknown): string | undefined {
       return `AS${asDigits}`;
     }
 
-    if (isDigitsOnly(trimmed, 10)) {
+    if (isDigitsOnly(trimmed, 10) && Number(trimmed) > 0) {
       return `AS${trimmed}`;
     }
   }
@@ -304,7 +356,15 @@ function getRttMs(entry: unknown): number | undefined {
     timingRtts.length > 0
       ? timingRtts.reduce((sum, rtt) => sum + rtt, 0) / timingRtts.length
       : undefined;
+  const timingMinimum = timingRtts.length > 0 ? Math.min(...timingRtts) : undefined;
+  // The smallest round trip seen: queueing and a router's own delay in replying only ever
+  // add to a round trip, so the minimum is the closest measure of propagation - what
+  // places a hop and what a leg's speed is read from. The averages are the fallback.
   const candidates = [
+    stats?.min,
+    value.min,
+    value.best,
+    timingMinimum,
     value.rtt,
     value.avg,
     value.mean,
@@ -454,12 +514,13 @@ function rttValues(rawHop: string) {
   return values;
 }
 
-function averageRtt(values: number[]) {
+// The smallest of a hop's tries, for the reason given at getRttMs.
+function minimumRtt(values: number[]) {
   if (values.length === 0) {
     return undefined;
   }
 
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  return Math.round(Math.min(...values));
 }
 
 function parseMtrMetrics(tokens: string[]) {
@@ -582,7 +643,8 @@ function parseRawHop(line: string): HopResult | undefined {
   const waitingForReply = rest.includes("(waiting for reply)") || tokens.filter((token) => token === "*").length >= 2;
   const ip = findIpv4(rest);
   const metrics = parseMtrMetrics(tokens);
-  const rttMs = metrics.avgRtt === undefined ? averageRtt(rttValues(rest)) : Math.round(metrics.avgRtt);
+  const tries = rttValues(rest);
+  const rttMs = metrics.avgRtt === undefined ? minimumRtt(tries) : Math.round(metrics.avgRtt);
   const hostname = rawHopHostname(tokens, waitingForReply);
   const loss = metrics.loss ?? (waitingForReply || rest.includes("*") ? 100 : 0);
 
@@ -593,9 +655,9 @@ function parseRawHop(line: string): HopResult | undefined {
     ip,
     rttMs,
     sent: metrics.sent ? Math.trunc(metrics.sent) : undefined,
-    lastMs: rttMs,
-    bestMs: undefined,
-    worstMs: undefined,
+    lastMs: tries.length > 0 ? Math.round(tries[tries.length - 1]) : rttMs,
+    bestMs: tries.length > 0 ? rttMs : undefined,
+    worstMs: tries.length > 0 ? Math.round(Math.max(...tries)) : undefined,
     jitterMs: metrics.jitterMs === undefined ? undefined : Math.round(metrics.jitterMs),
     packetLossPercent: loss,
     status: normalizeStatus(rttMs, loss)
@@ -702,6 +764,7 @@ function extractSource(payload: unknown) {
     city: typeof probe?.city === "string" ? probe.city : undefined,
     country: typeof probe?.country === "string" ? probe.country : undefined,
     asn: normalizeAsn(probe?.asn),
+    network: typeof probe?.network === "string" ? probe.network : undefined,
     latitude: typeof probe?.latitude === "number" ? probe.latitude : undefined,
     longitude: typeof probe?.longitude === "number" ? probe.longitude : undefined,
     note: "Measured from a nearby network probe. Not a direct trace from your device."
@@ -740,11 +803,17 @@ async function createProviderMeasurement(params: {
     body: JSON.stringify({
       type: globalpingType(params.measurement.mode),
       target: params.measurement.target,
-      locations: [{ magic: locationMagic(params.measurement.visitor) }],
-      limit: 1,
+      locations: requestLocations(params.measurement),
+      limit: PROBE_CANDIDATES,
       measurementOptions: measurementOptions(params.measurement.mode, params.protocol)
     })
   });
+
+  noteRateLimit(createResponse);
+
+  if (createResponse.status === 429) {
+    throw new Error(`Globalping hourly limit reached; resets in ${minutesUntilReset()} min`);
+  }
 
   if (!createResponse.ok) {
     throw new Error(`Globalping returned ${createResponse.status}`);
@@ -772,10 +841,36 @@ async function pollProviderMeasurement(apiUrl: string, providerId: string, contr
   return (await pollResponse.json()) as Record<string, unknown>;
 }
 
-function firstProviderResult(payload: Record<string, unknown>) {
-  const results = Array.isArray(payload.results) ? payload.results : [];
+function providerResults(payload: Record<string, unknown>) {
+  return Array.isArray(payload.results) ? payload.results : [];
+}
 
-  return results[0];
+// The path that shows the most routers is the one worth drawing. Counted before enrichment,
+// so a long run of same-city hops can beat a shorter path with more distinct places.
+// ponytail: cheap proxy; count distinct places instead if this picks the wrong probe often.
+function richestProviderResult(payload: Record<string, unknown>) {
+  let best: { result: unknown; index: number; answered: number } | undefined;
+
+  providerResults(payload).forEach((result, index) => {
+    if (resultFailureMessage(result)) {
+      return;
+    }
+
+    const answered = parseResultHops(result).filter((hop) => hop.ip).length;
+
+    if (!best || answered > best.answered) {
+      best = { result, index, answered };
+    }
+  });
+
+  return best;
+}
+
+// One probe failing is noise when the others answered; only a unanimous failure is an error.
+function everyResultFailed(payload: Record<string, unknown>) {
+  const messages = providerResults(payload).map((result) => resultFailureMessage(result));
+
+  return messages.length > 0 && messages.every(Boolean) ? messages[0] : undefined;
 }
 
 function nextRetryProtocolIndex(params: {
@@ -793,18 +888,53 @@ function nextRetryProtocolIndex(params: {
   return canRetry ? params.protocolIndex + 1 : undefined;
 }
 
-function providerFinished(payload: Record<string, unknown>, hops: HopResult[]) {
-  return payload.status === "finished" || payload.status === "completed" || hops.length > 0;
+// With several probes in flight the first to finish must not end the measurement, so this
+// waits for the provider to close it or for every probe to reach a terminal state.
+function providerFinished(payload: Record<string, unknown>) {
+  if (payload.status === "finished" || payload.status === "completed") {
+    return true;
+  }
+
+  const results = providerResults(payload);
+
+  return (
+    results.length > 0 &&
+    results.every((result) => {
+      const status = pickString(resultRecord(result), ["status"]);
+
+      return status === "finished" || status === "failed" || status === "offline";
+    })
+  );
+}
+
+// The probe reports what it resolved the target to; the header line of the raw output carries
+// the same address for older payloads.
+function targetAddress(payload: unknown) {
+  const result = resultRecord(payload);
+  const resolved = result ? pickString(result, ["resolvedAddress"]) : undefined;
+
+  if (resolved) {
+    return resolved;
+  }
+
+  const rawOutput = result ? pickString(result, ["rawOutput"]) : undefined;
+  const header = rawOutput?.split("\n")[0] ?? "";
+  const match = /\((\d{1,3}(?:\.\d{1,3}){3})\)/.exec(header);
+
+  return match?.[1];
 }
 
 function applyProviderResult(currentResult: MeasurementResult, firstResult: unknown, hops: HopResult[]) {
   const source = extractSource(firstResult);
+  const targetIp = targetAddress(firstResult);
 
   return {
     ...currentResult,
     source,
     hops,
-    confidence: measurementConfidence(hops)
+    confidence: measurementConfidence(hops),
+    targetIp,
+    reachedTarget: targetIp ? hops.some((hop) => hop.ip === targetIp) : undefined
   };
 }
 
@@ -854,6 +984,7 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
 
     const deadline = Date.now() + PROVIDER_TIMEOUT_MS;
     let emittedHopCount = 0;
+    let streamedIndex: number | undefined;
     const protocols = protocolsForMode(params.mode);
     let protocolIndex = 0;
     let providerId = await createProviderMeasurement({
@@ -867,13 +998,7 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
       await sleep(POLL_INTERVAL_MS);
 
       const pollPayload = await pollProviderMeasurement(apiUrl, providerId, controller);
-      const firstResult = firstProviderResult(pollPayload);
-
-      if (!firstResult) {
-        continue;
-      }
-
-      const failureMessage = resultFailureMessage(firstResult);
+      const failureMessage = everyResultFailed(pollPayload);
 
       if (failureMessage) {
         const retryProtocolIndex = nextRetryProtocolIndex({
@@ -886,6 +1011,7 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
         if (retryProtocolIndex !== undefined) {
           protocolIndex = retryProtocolIndex;
           emittedHopCount = 0;
+          streamedIndex = undefined;
           providerId = await createProviderMeasurement({
             apiUrl,
             controller,
@@ -898,12 +1024,25 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
         throw new Error(`Globalping measurement failed. ${failureMessage}`);
       }
 
+      const best = richestProviderResult(pollPayload);
+
+      if (!best) {
+        continue;
+      }
+
+      // A different probe pulling ahead mid-flight replaces what was streamed; resending from
+      // hop 1 keeps the client's list consistent with the probe the result now names.
+      if (best.index !== streamedIndex) {
+        streamedIndex = best.index;
+        emittedHopCount = 0;
+      }
+
       const hops = await enrichHopsWithGeo({
-        hops: parseResultHops(firstResult),
-        source: extractSource(firstResult)
+        hops: parseResultHops(best.result),
+        source: extractSource(best.result)
       });
 
-      currentResult = applyProviderResult(currentResult, firstResult, hops);
+      currentResult = applyProviderResult(currentResult, best.result, hops);
 
       yield* newHopEvents(hops, emittedHopCount);
 
@@ -913,7 +1052,7 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
         yield* metricUpdateEvents(hops);
       }
 
-      if (providerFinished(pollPayload, hops)) {
+      if (providerFinished(pollPayload)) {
         currentResult = {
           ...currentResult,
           status: "finished",
