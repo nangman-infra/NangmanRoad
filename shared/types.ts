@@ -1,4 +1,4 @@
-export type TraceMode = "traceout" | "mtr";
+export type TraceMode = "traceroute" | "mtr";
 
 export type MeasurementStatus =
   | "idle"

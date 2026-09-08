@@ -1991,7 +1991,7 @@ export function RouteVisualization({ mode, status, target, hops, source, theme, 
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.22em] text-cyan-100/55">
-              {mode === "traceout" ? t("map.title.traceout") : t("map.title.mtr")}
+              {mode === "traceroute" ? t("map.title.traceroute") : t("map.title.mtr")}
             </p>
             <h2 className="mt-1 truncate text-xl font-semibold text-white">
               {target || t("map.waitingTarget")}
@@ -2047,7 +2047,7 @@ export function RouteVisualization({ mode, status, target, hops, source, theme, 
               ref={containerRef}
               className="packet-map-canvas h-full w-full"
               style={view === "3d" ? { visibility: "hidden" } : undefined}
-              aria-label={t("map.title.traceout")}
+              aria-label={t("map.title.traceroute")}
             />
             <div className="theme-map-vignette pointer-events-none absolute inset-0" />
             {/* Mounted once and kept through view switches: taking the globe's canvas out
@@ -2062,9 +2062,9 @@ export function RouteVisualization({ mode, status, target, hops, source, theme, 
                   {hudOpen ? t("hud.hide") : t("hud.details")}
                 </button>
                 <p className="route-hud__note">{routeNote(hops, mode, reachedTarget, hasInferredLegs)}</p>
-                {onRetryWithMtr && mode === "traceout" && ranOutOfHops(hops, mode, reachedTarget) ? (
+                {onRetryWithMtr && mode === "traceroute" && ranOutOfHops(hops, mode, reachedTarget) ? (
                   <button type="button" className="route-hud__retry" onClick={onRetryWithMtr}>
-                    {t("note.retryMtr", { n: HOP_LIMIT.traceout })}
+                    {t("note.retryMtr", { n: HOP_LIMIT.traceroute })}
                   </button>
                 ) : null}
                 <div className="route-legend route-hud__legend">

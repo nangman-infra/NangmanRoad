@@ -34,7 +34,7 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
     "team.button": "Team site",
     "team.title": "Nangman team site",
     "team.open": "Open nangman.cloud",
-    "map.title.traceout": "Live route map",
+    "map.title.traceroute": "Live route map",
     "map.title.mtr": "MTR route map",
     "map.viewAria": "Map view",
     "map.drawingAria": "Route drawing",
@@ -153,7 +153,7 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
     "why.worker_failed": "the route worker failed",
     "why.no_worker": "no route worker in this browser",
     "why.straight_by_choice": "drawn as the shortest line, by choice",
-    "terminal.traceout": "Traceout terminal",
+    "terminal.traceroute": "Traceroute terminal",
     "terminal.mtr": "MTR terminal"
   },
   ko: {
@@ -183,7 +183,7 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
     "team.button": "팀 사이트",
     "team.title": "낭만 팀 사이트",
     "team.open": "nangman.cloud 열기",
-    "map.title.traceout": "실시간 경로 지도",
+    "map.title.traceroute": "실시간 경로 지도",
     "map.title.mtr": "MTR 경로 지도",
     "map.viewAria": "지도 보기",
     "map.drawingAria": "경로 그리기",
@@ -302,7 +302,7 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
     "why.worker_failed": "경로 계산기가 실패함",
     "why.no_worker": "이 브라우저는 워커를 지원하지 않음",
     "why.straight_by_choice": "직선 모드를 선택함",
-    "terminal.traceout": "Traceout 터미널",
+    "terminal.traceroute": "Traceroute 터미널",
     "terminal.mtr": "MTR 터미널"
   }
 };

@@ -806,10 +806,6 @@ function extractSource(payload: unknown) {
   };
 }
 
-function globalpingType(mode: TraceMode) {
-  return mode === "traceout" ? "traceroute" : "mtr";
-}
-
 function protocolsForMode(mode: TraceMode): readonly GlobalpingProtocol[] {
   return mode === "mtr" ? GLOBALPING_MTR_PROTOCOLS : ["ICMP"];
 }
@@ -836,7 +832,8 @@ async function createProviderMeasurement(params: {
     headers: headers(),
     signal: params.controller.signal,
     body: JSON.stringify({
-      type: globalpingType(params.measurement.mode),
+      // Globalping names its two measurements the same words this app does.
+      type: params.measurement.mode,
       target: params.measurement.target,
       locations: requestLocations(params.measurement),
       limit: PROBE_CANDIDATES,

@@ -25,7 +25,7 @@ test("a search is drawn, read and translated", async ({ page }) => {
   await expect(page.locator(".packet-map-canvas")).toBeHidden();
 
   await terminalToggle.click();
-  await expect(page.getByText("Traceout terminal")).toBeVisible();
+  await expect(page.getByText("Traceroute terminal")).toBeVisible();
   await expect(page.locator("main")).toContainText("gmx.net");
   await page.getByRole("button", { name: "Route map" }).click();
 

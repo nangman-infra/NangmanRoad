@@ -4,7 +4,7 @@ import type { Request, Response } from "express";
 const siteName = "Nangman Road";
 const pageTitle = "Nangman Road | Install-free Network Route Visualizer";
 const pageDescription =
-  "Visualize Traceout and MTR-style network routes from nearby distributed probes with an install-free browser experience.";
+  "Visualize Traceroute and MTR-style network routes from nearby distributed probes with an install-free browser experience.";
 // A raster, and not the SVG that stood here: no link-preview scraper - Slack, KakaoTalk,
 // X, Facebook, Discord - renders an SVG, so the card came up blank wherever the site was
 // shared. JPEG over PNG because the picture is all soft gradient, which costs 750 KB
@@ -96,7 +96,7 @@ function structuredData(siteUrl: string, imageUrl: string) {
       priceCurrency: "USD"
     },
     featureList: [
-      "Traceout-style route visualization",
+      "Traceroute-style route visualization",
       "MTR-style network measurement display",
       "Measured from nearby distributed network probes",
       "Install-free browser experience"

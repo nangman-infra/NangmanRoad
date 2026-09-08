@@ -5,7 +5,7 @@
 // and then nothing, which is right as far as it goes and simply stops short of the target.
 import type { HopResult, TraceMode } from "../../shared/types";
 
-export const HOP_LIMIT = { traceout: 20, mtr: 30 } as const;
+export const HOP_LIMIT = { traceroute: 20, mtr: 30 } as const;
 
 // True when a trace spent its whole hop allowance without reaching the target. A silent
 // tail does not rule this out and must not be read as the target refusing to answer: a hop

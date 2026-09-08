@@ -129,7 +129,7 @@ function journeyStateFor(params: {
 
 export function App() {
   const [target, setTarget] = useState(initialTarget);
-  const [mode, setMode] = useState<TraceMode>("traceout");
+  const [mode, setMode] = useState<TraceMode>("traceroute");
   const [probe, setProbe] = useState("auto");
   const [status, setStatus] = useState<MeasurementStatus>("idle");
   const [result, setResult] = useState<MeasurementResult | undefined>();
@@ -468,14 +468,14 @@ export function App() {
           </button>
         </header>
 
-        {status === "finished" && mode === "traceout" && !hopLimitAsked && ranOutOfHops(hops, mode, latestResult?.reachedTarget) ? (
+        {status === "finished" && mode === "traceroute" && !hopLimitAsked && ranOutOfHops(hops, mode, latestResult?.reachedTarget) ? (
           <div className="hop-limit" role="dialog" aria-modal="true" aria-labelledby="hop-limit-title">
             <div className="hop-limit__card">
               <p className="hop-limit__title" id="hop-limit-title">
                 {t("limit.title")}
               </p>
-              <p className="hop-limit__line">{t("limit.follows", { n: HOP_LIMIT.traceout })}</p>
-              <p className="hop-limit__line hop-limit__line--gap">{t("limit.missed", { n: HOP_LIMIT.traceout, target })}</p>
+              <p className="hop-limit__line">{t("limit.follows", { n: HOP_LIMIT.traceroute })}</p>
+              <p className="hop-limit__line hop-limit__line--gap">{t("limit.missed", { n: HOP_LIMIT.traceroute, target })}</p>
               <p className="hop-limit__line">{t("limit.deeper", { deeper: HOP_LIMIT.mtr })}</p>
               <p className="hop-limit__line hop-limit__line--ask">{t("limit.ask")}</p>
               <div className="hop-limit__actions">
@@ -711,7 +711,7 @@ function SearchForm({
       </div>
 
       <div className={`theme-mode-toggle mx-auto grid w-full max-w-xs grid-cols-2 rounded-full border p-1 backdrop-blur ${compact ? "mt-3 h-10" : "mt-5 h-11"}`}>
-        {(["traceout", "mtr"] as const).map((nextMode) => (
+        {(["traceroute", "mtr"] as const).map((nextMode) => (
           <button
             key={nextMode}
             type="button"
@@ -723,7 +723,7 @@ function SearchForm({
               disabled ? "cursor-not-allowed opacity-60" : ""
             ].join(" ")}
           >
-            {nextMode === "traceout" ? "Traceout" : "MTR"}
+            {nextMode === "traceroute" ? "Traceroute" : "MTR"}
           </button>
         ))}
       </div>

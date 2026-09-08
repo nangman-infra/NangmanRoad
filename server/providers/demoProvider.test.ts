@@ -11,7 +11,7 @@ describe("runDemoMeasurement", () => {
 
     const events = runDemoMeasurement({
       id: "demo-1",
-      mode: "traceout",
+      mode: "traceroute",
       target: "1.1.1.1",
       visitor: { locale: "ko-KR", timeZone: "Asia/Seoul" }
     });
@@ -46,7 +46,7 @@ describe("runDemoMeasurement", () => {
 
     const googleEvents = runDemoMeasurement({
       id: "demo-google",
-      mode: "traceout",
+      mode: "traceroute",
       target: "google.com"
     });
     await googleEvents.next();
@@ -62,7 +62,7 @@ describe("runDemoMeasurement", () => {
 
     const genericEvents = runDemoMeasurement({
       id: "demo-generic",
-      mode: "traceout",
+      mode: "traceroute",
       target: "example.com"
     });
     await genericEvents.next();

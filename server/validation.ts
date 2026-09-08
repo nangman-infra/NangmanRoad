@@ -174,9 +174,16 @@ export function normalizeProbeId(input: unknown): string | undefined {
 }
 
 export function normalizeMode(input: unknown): TraceMode {
-  if (input === "traceout" || input === "mtr") {
+  if (input === "traceroute" || input === "mtr") {
     return input;
   }
 
-  throw new Error("Mode must be traceout or mtr.");
+  // The mode was spelled "traceout" until it was renamed after the command it runs, and a
+  // browser still holding the old bundle sends that word. Take it rather than answering a
+  // page that was correct when it was served with an error.
+  if (input === "traceout") {
+    return "traceroute";
+  }
+
+  throw new Error("Mode must be traceroute or mtr.");
 }

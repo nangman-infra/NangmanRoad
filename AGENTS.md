@@ -85,7 +85,7 @@ Avoid misleading phrases:
 First build a beautiful working prototype with:
 
 1. target input
-2. Traceout / MTR mode toggle
+2. Traceroute / MTR mode toggle
 3. backend measurement endpoint
 4. provider integration or mocked provider adapter
 5. realtime hop updates

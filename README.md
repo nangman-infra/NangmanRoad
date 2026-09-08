@@ -1,6 +1,6 @@
 # Nangman Road
 
-Nangman Road is an install-free network route visualizer. Visitors enter a domain or IP address, choose Traceout or MTR, and see the measured route on a live map with a terminal-style result view.
+Nangman Road is an install-free network route visualizer. Visitors enter a domain or IP address, choose Traceroute or MTR, and see the measured route on a live map with a terminal-style result view.
 
 ## Product Truth
 
@@ -24,7 +24,7 @@ If exact visitor-device measurement is required later, this project needs a loca
 
 ## What It Does
 
-- Traceout mode for a route-style view.
+- Traceroute mode for a route-style view.
 - MTR mode for repeated monitoring-style measurements. Globalping's traceroute stops after 20 hops and its mtr after 30, and the API takes no option to raise either, so a target further off than that is never probed at all - the trace is right as far as it goes and simply stops short. When a traceroute spends its whole allowance without reaching the target the result says so and offers to measure again in mtr, which follows ten hops further; the offer is made whenever the allowance ran out, whether or not the last hops answered - a hop that returns nothing is a router that sent no reply of its own, and the target may still be several hops beyond it, unprobed - and nothing is re-measured until the visitor asks.
 - Server-Sent Events for realtime measurement updates.
 - Light and dark themes.
@@ -39,9 +39,9 @@ If exact visitor-device measurement is required later, this project needs a loca
 
 ## Measurement Notes
 
-### Traceout
+### Traceroute
 
-Traceout uses the provider traceroute result and visualizes reliable location points on the map.
+Traceroute mode takes the provider's traceroute result and visualizes reliable location points on the map.
 
 ### MTR
 
@@ -70,7 +70,7 @@ The map does not blindly place every hop. Each hop's city is chosen from several
 - **Metro fill**: a hop with no usable candidate that answers within 5 ms of a corroborated neighbour inherits that neighbour's metro area, labelled as an area rather than a city - and only if the probe's own distance allows it, since a router answering the probe in a millisecond is not in the next city however close in latency its neighbour is.
 - A lone weak database point sitting between two reliable hops in the same metro is suppressed.
 
-Every decision is recorded per hop and shown in the map tooltip and the traceout terminal view, so a blank on the map always comes with its reason.
+Every decision is recorded per hop and shown in the map tooltip and the traceroute terminal view, so a blank on the map always comes with its reason.
 
 Unknown or low-confidence hops stay in the terminal output instead of being forced onto the map. If no hop answered from the target's address, the last router that answered is drawn as an ordinary hop - the target's name is never pinned to a router that merely came last - and the note under the map says whether the trace ran out of hops (traceroute follows 20, MTR 30) or the target stopped answering. Public IP geolocation is often approximate: a backbone router registered in Madrid may be answering from Sao Paulo, and a lone database answer says nothing about which. Nangman Road prefers a blank with a reason over a confident wrong pin.
 
@@ -273,13 +273,13 @@ Returns backend status.
 ```json
 {
   "target": "example.com",
-  "mode": "traceout"
+  "mode": "traceroute"
 }
 ```
 
 `mode` can be:
 
-- `traceout`
+- `traceroute`
 - `mtr`
 
 ### `GET /api/measurements/:id/events`

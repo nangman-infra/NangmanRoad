@@ -5,7 +5,7 @@ import { runGlobalpingMeasurement } from "./providers/globalpingProvider";
 import { createSession, getSession, latestResult, subscribe } from "./sessionStore";
 
 vi.mock("./providers/globalpingProvider", () => ({
-  runGlobalpingMeasurement: vi.fn(async function* runGlobalpingMeasurement(params: { id: string; mode: "traceout" | "mtr"; target: string }) {
+  runGlobalpingMeasurement: vi.fn(async function* runGlobalpingMeasurement(params: { id: string; mode: "traceroute" | "mtr"; target: string }) {
     yield {
       type: "measurement_started",
       payload: {
@@ -68,7 +68,7 @@ afterEach(() => {
 describe("sessionStore", () => {
   it("creates a session, stores measurement events, and replays them to subscribers", async () => {
     const created = createSession({
-      mode: "traceout",
+      mode: "traceroute",
       target: "1.1.1.1"
     });
 
@@ -106,7 +106,7 @@ describe("sessionStore", () => {
     });
 
     const created = createSession({
-      mode: "traceout",
+      mode: "traceroute",
       target: "nope.example"
     });
 
@@ -135,7 +135,7 @@ describe("sessionStore", () => {
     });
 
     const created = createSession({
-      mode: "traceout",
+      mode: "traceroute",
       target: "example.com"
     });
 
@@ -163,7 +163,7 @@ describe("sessionStore", () => {
     });
 
     const created = createSession({
-      mode: "traceout",
+      mode: "traceroute",
       target: "example.com"
     });
 

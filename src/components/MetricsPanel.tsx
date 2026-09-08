@@ -48,7 +48,7 @@ export function MetricsPanel({ result, hops, mode, status }: MetricsPanelProps) 
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Metric label="Mode" value={mode === "traceout" ? "Traceout" : "MTR"} />
+        <Metric label="Mode" value={mode === "traceroute" ? "Traceroute" : "MTR"} />
         <Metric label="Status" value={status} />
         <Metric label="Avg RTT" value={avgRtt ? `${avgRtt} ms` : "-"} />
         <Metric label="Avg loss" value={formatAverageLoss(avgLoss)} />

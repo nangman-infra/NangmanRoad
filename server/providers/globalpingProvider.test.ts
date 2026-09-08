@@ -175,7 +175,7 @@ describe("runGlobalpingMeasurement", () => {
     const outcomes: Array<boolean | undefined> = [];
 
     for (const id of ["cut", "full"]) {
-      const events = runGlobalpingMeasurement({ id, mode: "traceout", target: "example.com" });
+      const events = runGlobalpingMeasurement({ id, mode: "traceroute", target: "example.com" });
       let pending = events.next();
       let reached: boolean | undefined;
 
@@ -226,7 +226,7 @@ describe("runGlobalpingMeasurement", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     for (const id of ["a", "b"]) {
-      const events = runGlobalpingMeasurement({ id, mode: "traceout", target: "example.com", from: "seoul" });
+      const events = runGlobalpingMeasurement({ id, mode: "traceroute", target: "example.com", from: "seoul" });
       await events.next();
       const pending = events.next();
       await vi.advanceTimersByTimeAsync(1_250);
@@ -237,7 +237,7 @@ describe("runGlobalpingMeasurement", () => {
     expect(body(0).limit).toBeGreaterThan(1);
     expect(body(2).limit).toBe(body(0).limit);
 
-    const starved = runGlobalpingMeasurement({ id: "c", mode: "traceout", target: "example.com", from: "seoul" });
+    const starved = runGlobalpingMeasurement({ id: "c", mode: "traceroute", target: "example.com", from: "seoul" });
     await starved.next();
     await expect(starved.next()).rejects.toThrow(/hourly limit reached; resets in 9 min/);
 
@@ -266,7 +266,7 @@ describe("runGlobalpingMeasurement", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     for (const from of ["seoul", "losangeles"]) {
-      const events = runGlobalpingMeasurement({ id: from, mode: "traceout", target: "example.com", from });
+      const events = runGlobalpingMeasurement({ id: from, mode: "traceroute", target: "example.com", from });
       await events.next();
       const pending = events.next();
       await vi.advanceTimersByTimeAsync(1_250);
@@ -304,7 +304,7 @@ describe("runGlobalpingMeasurement", () => {
         )
     );
 
-    const events = runGlobalpingMeasurement({ id: "m", mode: "traceout", target: "example.com" });
+    const events = runGlobalpingMeasurement({ id: "m", mode: "traceroute", target: "example.com" });
     const seen = [];
     let pending = events.next();
 
@@ -371,7 +371,7 @@ describe("runGlobalpingMeasurement", () => {
 
     const events = runGlobalpingMeasurement({
       id: "measurement-1",
-      mode: "traceout",
+      mode: "traceroute",
       target: "1.1.1.1"
     });
 
@@ -511,12 +511,12 @@ describe("runGlobalpingMeasurement", () => {
     expect(createBodies.map((body) => body.measurementOptions.protocol)).toEqual(["ICMP", "TCP"]);
   });
 
-  it("throws a sanitized provider error when a traceout measurement fails", async () => {
+  it("throws a sanitized provider error when a traceroute measurement fails", async () => {
     vi.useFakeTimers();
     process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "traceout-measurement" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "traceroute-measurement" }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         status: "finished",
         results: [
@@ -532,7 +532,7 @@ describe("runGlobalpingMeasurement", () => {
 
     const events = runGlobalpingMeasurement({
       id: "measurement-failed",
-      mode: "traceout",
+      mode: "traceroute",
       target: "example.com"
     });
 
@@ -548,7 +548,7 @@ describe("runGlobalpingMeasurement", () => {
 
     const events = runGlobalpingMeasurement({
       id: "measurement-create-failed",
-      mode: "traceout",
+      mode: "traceroute",
       target: "example.com"
     });
 

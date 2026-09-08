@@ -21,11 +21,15 @@ describe("normalizeTarget", () => {
 
 describe("normalizeMode", () => {
   it("accepts supported measurement modes", () => {
-    expect(normalizeMode("traceout")).toBe("traceout");
+    expect(normalizeMode("traceroute")).toBe("traceroute");
     expect(normalizeMode("mtr")).toBe("mtr");
   });
 
+  it("still takes the name the mode had before it was renamed", () => {
+    expect(normalizeMode("traceout")).toBe("traceroute");
+  });
+
   it("rejects unsupported modes", () => {
-    expect(() => normalizeMode("ping")).toThrow("traceout or mtr");
+    expect(() => normalizeMode("ping")).toThrow("traceroute or mtr");
   });
 });

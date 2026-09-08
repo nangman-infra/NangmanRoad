@@ -49,7 +49,7 @@ function formatHost(hop: HopResult) {
   return hop.hostname || hop.ip || "*";
 }
 
-function traceoutLine(hop: HopResult) {
+function tracerouteLine(hop: HopResult) {
   const hopNo = String(hop.hopNumber).padStart(2, " ");
   const rtt = formatRtt(hop.rttMs).padStart(6, " ");
   const status = (hop.status === "ok" ? "ok" : hop.status).padEnd(7, " ");
@@ -85,7 +85,7 @@ function providerName(result?: MeasurementResult) {
 }
 
 function commandForMode(mode: TraceMode, target: string) {
-  return mode === "mtr" ? `mtr -rwc ${MTR_REPORT_CYCLES} -z ${target}` : `traceout ${target}`;
+  return mode === "mtr" ? `mtr -rwc ${MTR_REPORT_CYCLES} -z ${target}` : `traceroute ${target}`;
 }
 
 function commandLines(params: { mode: TraceMode; result?: MeasurementResult; target: string }) {
@@ -113,11 +113,11 @@ function emptyOutputLine(error?: string) {
   return error ? `error  ${error}` : "no completed route output";
 }
 
-function traceoutLines(hops: HopResult[]) {
-  return hops.map((hop) => traceoutLine(hop));
+function tracerouteLines(hops: HopResult[]) {
+  return hops.map((hop) => tracerouteLine(hop));
 }
 
-function traceoutEmptyLines(error?: string) {
+function tracerouteEmptyLines(error?: string) {
   return [emptyOutputLine(error)];
 }
 
@@ -173,7 +173,7 @@ function MtrOutput(params: Readonly<{ commandLines: string[]; resultContent: Rea
   );
 }
 
-function TraceoutOutput(params: Readonly<{ commandLines: string[]; resultLines: string[] }>) {
+function TracerouteOutput(params: Readonly<{ commandLines: string[]; resultLines: string[] }>) {
   return (
     <pre className="terminal-output terminal-scrollbar flex-1 overflow-auto p-4 pb-6 text-[12px] leading-5">
       <code>
@@ -189,7 +189,7 @@ export function TerminalOutput({ error, hops, mode, result, status, target }: Te
   const mtrResultContent = shouldRenderResultOutput
     ? <MtrTable hops={hops} />
     : <div className="terminal-empty-line">{emptyOutputLine(error)}</div>;
-  const traceoutResultLines = shouldRenderResultOutput ? traceoutLines(hops) : traceoutEmptyLines(error);
+  const tracerouteResultLines = shouldRenderResultOutput ? tracerouteLines(hops) : tracerouteEmptyLines(error);
 
   return (
     <aside className="terminal-panel flex min-h-0 flex-col overflow-hidden rounded-lg border">
@@ -198,7 +198,7 @@ export function TerminalOutput({ error, hops, mode, result, status, target }: Te
           <Terminal className="h-5 w-5 shrink-0 text-signal-cyan" aria-hidden="true" />
           <div className="min-w-0">
             <p className="terminal-eyebrow text-xs uppercase tracking-[0.26em]">
-              {mode === "mtr" ? t("terminal.mtr") : t("terminal.traceout")}
+              {mode === "mtr" ? t("terminal.mtr") : t("terminal.traceroute")}
             </p>
           </div>
         </div>
@@ -210,7 +210,7 @@ export function TerminalOutput({ error, hops, mode, result, status, target }: Te
       {mode === "mtr" ? (
         <MtrOutput commandLines={lines} resultContent={mtrResultContent} />
       ) : (
-        <TraceoutOutput commandLines={lines} resultLines={traceoutResultLines} />
+        <TracerouteOutput commandLines={lines} resultLines={tracerouteResultLines} />
       )}
     </aside>
   );

@@ -11,7 +11,7 @@ export function ModeToggle({ value, disabled, onChange }: ModeToggleProps) {
     <div>
       <span className="mb-2 block text-sm font-medium text-cyan-50/75">Mode</span>
       <div className="grid h-12 grid-cols-2 rounded-lg border border-white/10 bg-white/[0.06] p-1">
-        {(["traceout", "mtr"] as const).map((mode) => (
+        {(["traceroute", "mtr"] as const).map((mode) => (
           <button
             key={mode}
             type="button"
@@ -25,7 +25,7 @@ export function ModeToggle({ value, disabled, onChange }: ModeToggleProps) {
               disabled ? "cursor-not-allowed opacity-60" : ""
             ].join(" ")}
           >
-            {mode === "traceout" ? "Traceout" : "MTR"}
+            {mode === "traceroute" ? "Traceroute" : "MTR"}
           </button>
         ))}
       </div>
