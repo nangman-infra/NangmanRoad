@@ -156,3 +156,69 @@ describe("CableGraph on the bundled cable data", () => {
     expect(graph.decide([41.39, 2.17], [44.41, 8.93], { rttMs: 4 }).kind).toBe("land");
   });
 });
+
+// A chain hands from one cable system to the next at a station shared by both, and those
+// handovers fall in the middle of a sea run. Reading only the run's two ends left most of
+// the stations a leg actually touches with no name anywhere on the map.
+describe("the stations a chain runs through", () => {
+  const landings = JSON.parse(readFileSync(new URL("../../public/data/landings.json", import.meta.url), "utf8")).landings as Array<[string, number, number]>;
+  const graph = new CableGraph(cables, new LandMask(countries), landings);
+  const named = new Set(landings.map(([name]) => name));
+
+  const stations = (from: [number, number], to: [number, number]) => {
+    const decision = graph.decide(from, to);
+
+    expect(decision.kind).toBe("cable");
+
+    return decision.kind === "cable" ? decision.segments.flatMap((segment) => segment.via ?? []) : [];
+  };
+
+  it("names the Sri Lankan station a Europe-to-Asia leg rounds the island at", () => {
+    expect(stations([50.11, 8.68], [1.29, 103.85]).map((station) => station.name)).toContain("Matara, Sri Lanka");
+  });
+
+  it("names the two Egyptian stations either side of the Suez land crossing", () => {
+    const names = stations([50.11, 8.68], [19.08, 72.88]).map((station) => station.name);
+
+    expect(names).toContain("Abu Talat, Egypt");
+    expect(names).toContain("Zafarana, Egypt");
+  });
+
+  it("names the Brazilian hub a South Atlantic leg passes, which is neither of its ends", () => {
+    const decision = graph.decide([-23.55, -46.63], [38.72, -9.14]);
+
+    expect(decision.kind).toBe("cable");
+
+    if (decision.kind !== "cable") return;
+
+    const ends = decision.segments.flatMap((segment) => [segment.from, segment.to]);
+
+    expect(decision.segments.flatMap((segment) => segment.via ?? []).map((station) => station.name)).toContain("Fortaleza, Brazil");
+    expect(ends).not.toContain("Fortaleza, Brazil");
+  });
+
+  it("invents no station: every name comes from the landing point data", () => {
+    for (const leg of [
+      [[50.11, 8.68], [1.29, 103.85]],
+      [[37.57, 126.98], [22.32, 114.17]],
+      [[25.77, -80.19], [-34.6, -58.38]],
+      [[35.68, 139.69], [-33.87, 151.21]]
+    ] as Array<[[number, number], [number, number]]>) {
+      for (const station of stations(...leg)) expect(named.has(station.name)).toBe(true);
+    }
+  });
+
+  it("puts every station on the stretch that carries it, so its name lands on the line", () => {
+    const decision = graph.decide([50.11, 8.68], [1.29, 103.85]);
+
+    expect(decision.kind).toBe("cable");
+
+    if (decision.kind !== "cable") return;
+
+    for (const segment of decision.segments) {
+      for (const station of segment.via ?? []) {
+        expect(segment.path.some((point) => point[0] === station.at[0] && point[1] === station.at[1])).toBe(true);
+      }
+    }
+  });
+});

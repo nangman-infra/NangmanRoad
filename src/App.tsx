@@ -12,6 +12,7 @@ import { createMeasurement, openMeasurementEvents } from "./api";
 import { AppShell, type JourneyState, type ThemeMode } from "./components/AppShell";
 import { RouteVisualization, prepareRouteLegs } from "./components/RouteVisualization";
 import { warmRouter } from "./lib/routeClient";
+import { HOP_LIMIT, ranOutOfHops } from "./lib/traceLimits";
 import { TerminalOutput } from "./components/TerminalOutput";
 import { LANG_STORAGE_KEY, LangContext, detectLang, setCurrentLang, t, type Lang } from "./lib/i18n";
 
@@ -132,6 +133,9 @@ export function App() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isJourneyLaunching, setIsJourneyLaunching] = useState(false);
   const [resultView, setResultView] = useState<"map" | "terminal">("map");
+  // Asked once per measurement: a visitor who waves it away gets the map, and the note's own
+  // button is still there if they change their mind.
+  const [hopLimitAsked, setHopLimitAsked] = useState(false);
   // The globe is built at page load and the result waits for it: a longer wait on the
   // probe screen, never a stutter when the map appears. A globe that cannot be built
   // (no WebGL) or takes too long stops holding the result up.
@@ -251,17 +255,24 @@ export function App() {
     }, delay);
   }
 
-  // A probe named here re-measures the same target from it, as the result's own control does.
-  async function start(from?: string) {
+  // A probe named here re-measures the same target from it, as the result's own control does;
+  // a mode named here does the same in the other mode, which is how a traceroute that ran out
+  // of hops is followed up with an mtr without the visitor retyping the target.
+  async function start(from?: string, useMode?: TraceMode) {
     if (!target.trim()) {
       setError(t("search.empty"));
       return;
     }
 
     const origin = from ?? probe;
+    const traceMode = useMode ?? mode;
 
     if (from) {
       setProbe(from);
+    }
+
+    if (useMode) {
+      setMode(useMode);
     }
 
     closeEventsRef.current?.();
@@ -279,11 +290,12 @@ export function App() {
     setStatus("starting");
     setHops([]);
     setResult(undefined);
+    setHopLimitAsked(false);
 
     try {
       const measurement = await createMeasurement({
         target,
-        mode,
+        mode: traceMode,
         from: origin === "auto" ? undefined : origin,
         visitor: {
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -443,10 +455,40 @@ export function App() {
           </button>
         </header>
 
+        {status === "finished" && mode === "traceout" && !hopLimitAsked && ranOutOfHops(hops, mode, latestResult?.reachedTarget) ? (
+          <div className="hop-limit" role="dialog" aria-modal="true" aria-labelledby="hop-limit-title">
+            <div className="hop-limit__card">
+              <p className="hop-limit__title" id="hop-limit-title">
+                {t("limit.title")}
+              </p>
+              <p className="hop-limit__line">{t("limit.follows", { n: HOP_LIMIT.traceout })}</p>
+              <p className="hop-limit__line hop-limit__line--gap">{t("limit.missed", { n: HOP_LIMIT.traceout, target })}</p>
+              <p className="hop-limit__line">{t("limit.deeper", { deeper: HOP_LIMIT.mtr })}</p>
+              <p className="hop-limit__line hop-limit__line--ask">{t("limit.ask")}</p>
+              <div className="hop-limit__actions">
+                <button
+                  type="button"
+                  className="hop-limit__action hop-limit__action--go"
+                  onClick={() => {
+                    setHopLimitAsked(true);
+                    void start(undefined, "mtr");
+                  }}
+                >
+                  {t("limit.confirm")}
+                </button>
+                <button type="button" className="hop-limit__action" onClick={() => setHopLimitAsked(true)}>
+                  {t("limit.dismiss")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="result-stage flex min-h-0 flex-1">
           {resultView === "map" ? (
             <RouteVisualization
               reachedTarget={latestResult?.reachedTarget}
+              onRetryWithMtr={() => start(undefined, "mtr")}
               mode={mode}
               status={status}
               target={target}

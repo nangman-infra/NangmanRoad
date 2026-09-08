@@ -1,13 +1,13 @@
 import Globe, { type GlobeInstance } from "globe.gl";
-import { AdditiveBlending, BufferGeometry, Color, Float32BufferAttribute, NormalBlending, type PerspectiveCamera, Points, ShaderMaterial } from "three";
+import { AdditiveBlending, BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, NormalBlending, type PerspectiveCamera, Points, ShaderMaterial, Sprite, SpriteMaterial } from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { useEffect, useRef, useState } from "react";
 import { haversineKm, type LatLng, type LegEvidence } from "../lib/cableRouting";
 import { currentLanguage, t as translateNow, useLang } from "../lib/i18n";
-import { cableGeometry, cityGeometry, type LightGeometry } from "../lib/globeGeometry";
-import { lighten, speedColor } from "../lib/latency";
+import { LABEL_ALTITUDE, RING_ALTITUDE, SURFACE_ALTITUDE, cableGeometry, cityGeometry, typefaceText, type LightGeometry } from "../lib/globeGeometry";
+import { ENDPOINT_INK, lighten, speedColor } from "../lib/latency";
 import { legLabel } from "../lib/legLabel";
 import { loadMapData } from "../lib/mapData";
 
@@ -49,6 +49,8 @@ export interface GlobeLeg {
   // The landing stations at the stretch's ends, where known.
   from?: string;
   to?: string;
+  // Every named landing station the stretch runs through, ends included.
+  via?: Array<{ name: string; at: LatLng }>;
   // A straight line that has to cross water, drawn so because no cable chain was found.
   crossing?: boolean;
   // Why the leg was decided the way it was.
@@ -91,7 +93,9 @@ const escapeHtml = (value: string) =>
 const tip = (title: string, meta?: string, why?: string, speed?: string) =>
   `<div class="globe-tip"><div class="globe-tip__title">${escapeHtml(title)}</div>${meta ? `<div class="globe-tip__meta">${escapeHtml(meta)}</div>` : ""}${why ? `<div class="globe-tip__why">${escapeHtml(why)}</div>` : ""}${speed ? `<div class="globe-tip__speed">${escapeHtml(speed)}</div>` : ""}</div>`;
 
-const ROUTE_ALTITUDE = 0.014;
+// The route, the hop rings, the names and the cables all sit at SURFACE_ALTITUDE, so none
+// of them can slide away from another, or from the coast under them, as the globe turns.
+const ROUTE_ALTITUDE = SURFACE_ALTITUDE;
 // The globe opens over the probe at this height, and that is as far out as it goes.
 const MAX_ALTITUDE = 1.3;
 // Screen-space cable width, so the cables keep their weight at any zoom. The cables are
@@ -116,7 +120,6 @@ const PALETTE = {
     glow: "rgba(94, 231, 255, 0.16)",
     // Context, not subject: faint enough that the route and the lights stay in front.
     cableOpacity: 0.24,
-    source: "#5ee7ff",
     label: "rgba(224, 246, 255, 0.9)",
     landing: "rgba(188, 214, 236, 0.62)",
     waypoint: "rgba(170, 196, 220, 0.46)"
@@ -128,7 +131,6 @@ const PALETTE = {
     atmosphere: "#7dd3fc",
     glow: "rgba(14, 165, 233, 0.18)",
     cableOpacity: 0.34,
-    source: "#0284c7",
     label: "rgba(15, 23, 42, 0.88)",
     landing: "rgba(51, 65, 85, 0.66)",
     waypoint: "rgba(71, 85, 105, 0.5)"
@@ -356,15 +358,19 @@ function routePaths(legs: GlobeLeg[]): GlobePath[] {
   });
 }
 
-// The stations an inferred chain comes ashore at, as points to name: the first and last
-// vertex of every sea stretch, each station once.
+// The stations an inferred chain touches, as points to name: where every sea stretch
+// begins and ends, and every station it runs through on the way, each station once.
 function landingPoints(legs: GlobeLeg[]): GlobePoint[] {
   const stations = new Map<string, GlobePoint>();
 
   for (const leg of legs) {
-    if (leg.kind !== "sea") continue;
+    // Where the chain hands from one system to the next it does so at a station in the
+    // middle of the run, and where a cable's own line crosses land the run is cut there,
+    // so a stretch drawn as land can still touch one. Both carry a name worth writing.
+    const ends: Array<[string | undefined, LatLng | undefined]> = leg.kind === "sea" ? [[leg.from, leg.path[0]], [leg.to, leg.path.at(-1)]] : [];
+    const passed: Array<[string | undefined, LatLng | undefined]> = (leg.via ?? []).map((station) => [station.name, station.at]);
 
-    for (const [name, point] of [[leg.from, leg.path[0]], [leg.to, leg.path.at(-1)]] as Array<[string | undefined, LatLng | undefined]>) {
+    for (const [name, point] of [...ends, ...passed]) {
       if (!name || !point || stations.has(name)) continue;
 
       stations.set(name, {
@@ -383,11 +389,11 @@ function landingPoints(legs: GlobeLeg[]): GlobePoint[] {
 
 // Which city a sea stretch passes off - read from the map, never from a measurement, and
 // said so on hover. Only cities of half a million or more, within an hour's drive of the
-// line, one every twelve hundred kilometres, and never on top of a hop or a station.
+// line, one every few hundred kilometres, and never on top of a hop or a station.
 const WAYPOINT_MIN_POP = 500;
 const WAYPOINT_REACH_KM = 60;
-const WAYPOINT_SPACING_KM = 1200;
-const WAYPOINT_CLEAR_KM = 250;
+const WAYPOINT_SPACING_KM = 350;
+const WAYPOINT_CLEAR_KM = 120;
 const WAYPOINT_STEP_KM = 40;
 const CITY_CELL_DEGREES = 1;
 
@@ -462,20 +468,112 @@ function waypoints(legs: GlobeLeg[], cities: NamedCity[], taken: GlobePoint[]): 
   return picked;
 }
 
+// The mark at each end of the route is a plain dot in the page's black and white, like every
+// hop; what sets it apart is the light around it. A bright thing seen through a lens does not
+// end at its edge - it blooms, cold and close in, with a faint warm rim further out where the
+// glass bends the long wavelengths hardest. That is what this draws. The middle is left empty
+// so the dot is never covered, and the globe's own ring layer cannot do it: those are
+// hairlines, and no number of hairlines makes a glow.
+const HALO_STOPS: Record<Theme, Array<[number, string]>> = {
+  dark: [
+    [0, "rgba(255,255,255,0)"],
+    [0.14, "rgba(255,255,255,0)"],
+    [0.21, "rgba(236,248,255,0.5)"],
+    [0.35, "rgba(150,205,255,0.32)"],
+    [0.55, "rgba(186,172,255,0.19)"],
+    [0.75, "rgba(255,206,180,0.1)"],
+    [1, "rgba(255,255,255,0)"]
+  ],
+  // On a pale map a glow cannot be added to the light already there, so the day halo is
+  // painted over it instead, deeper and more of it, or nothing of it would show.
+  light: [
+    [0, "rgba(255,255,255,0)"],
+    [0.14, "rgba(255,255,255,0)"],
+    [0.21, "rgba(190,228,255,0.82)"],
+    [0.35, "rgba(104,170,230,0.5)"],
+    [0.55, "rgba(138,122,212,0.3)"],
+    [0.75, "rgba(232,158,122,0.18)"],
+    [1, "rgba(255,255,255,0)"]
+  ]
+};
+
+const HALO_TEXTURE_PIXELS = 256;
+// Wide enough to read as light around the mark, not as a second mark.
+const HALO_SPAN = 9;
+
+function haloMaterial(theme: Theme) {
+  const canvas = document.createElement("canvas");
+
+  canvas.width = HALO_TEXTURE_PIXELS;
+  canvas.height = HALO_TEXTURE_PIXELS;
+
+  const context = canvas.getContext("2d");
+  const middle = HALO_TEXTURE_PIXELS / 2;
+
+  if (context) {
+    const bloom = context.createRadialGradient(middle, middle, 0, middle, middle, middle);
+
+    for (const [stop, colour] of HALO_STOPS[theme]) bloom.addColorStop(stop, colour);
+
+    context.fillStyle = bloom;
+    context.fillRect(0, 0, HALO_TEXTURE_PIXELS, HALO_TEXTURE_PIXELS);
+  }
+
+  return new SpriteMaterial({
+    map: new CanvasTexture(canvas),
+    transparent: true,
+    depthWrite: false,
+    // By night the glow adds to the sky behind it; by day it is paint on a white page.
+    blending: theme === "dark" ? AdditiveBlending : NormalBlending
+  });
+}
+
+// Where the route starts and where it ends are the two things a visitor looks for first,
+// and until now both wore the same white dot as every hop between them - the arrival sat
+// on the last hop that answered and was indistinguishable from it. So the ends get their
+// own colour, and a mark half again as wide as a hop's.
+const DOT_RADIUS: Record<GlobePoint["role"], number> = {
+  source: 0.45,
+  target: 0.45,
+  transit: 0.3,
+  landing: 0.14,
+  waypoint: 0.1,
+  // The target never answered: its name goes on the last hop that did, and an arrival mark
+  // there would claim the packet got somewhere it was never seen to reach.
+  unreached: 0
+};
+
+const ENDS = new Set<GlobePoint["role"]>(["source", "target"]);
+
 // A name's footprint on the globe: about six tenths of the size per letter, one size
 // tall, below its dot, above it or to its right.
-const LABEL_SIZE = { hop: 1.05, landing: 0.72, waypoint: 0.64 } as const;
+const LABEL_SIZE = { hop: 0.92, landing: 0.72, waypoint: 0.64 } as const;
 const NEVER_DROPPED = new Set<GlobePoint["role"]>(["source", "target", "unreached"]);
 
-function labelSize(point: GlobePoint) {
-  return point.role === "waypoint" ? LABEL_SIZE.waypoint : point.role === "landing" || point.role === "unreached" ? LABEL_SIZE.landing : LABEL_SIZE.hop;
+// A name is written in degrees of the globe, so on the way in it would grow with the globe
+// and the same handful would fill the screen. Scaling it down as the camera comes closer
+// keeps every name the same size to read, and shrinks what it covers of the map, so the
+// names that had nowhere to go at arm's length appear as the view closes in.
+function labelScaleFor(altitude: number) {
+  // How much of the globe the camera can see, as an angle: that is what a name competes
+  // for room in. It shrinks fast on the way in - a third of the world at arm's length,
+  // a few degrees up close - so a name written in degrees has to shrink with it.
+  const span = (height: number) => Math.acos(1 / (1 + Math.max(0.002, height)));
+
+  return Math.max(0.05, Math.min(1, span(altitude) / span(MAX_ALTITUDE)));
+}
+
+function labelSize(point: GlobePoint, scale = 1) {
+  const base = point.role === "waypoint" ? LABEL_SIZE.waypoint : point.role === "landing" ? LABEL_SIZE.landing : LABEL_SIZE.hop;
+
+  return base * scale;
 }
 const ORIENTATIONS: LabelOrientation[] = ["bottom", "top", "right"];
 
-function labelBox(point: GlobePoint) {
-  const size = labelSize(point);
+function labelBox(point: GlobePoint, scale: number) {
+  const size = labelSize(point, scale);
   const stretch = 1 / Math.max(0.2, Math.cos((point.lat * Math.PI) / 180));
-  const width = (0.62 * point.label.length + 0.6) * size * stretch;
+  const width = (0.62 * typefaceText(point.label).length + 0.6) * size * stretch;
 
   switch (point.orientation ?? "bottom") {
     case "top":
@@ -487,10 +585,40 @@ function labelBox(point: GlobePoint) {
   }
 }
 
-function labelsCollide(a: GlobePoint, b: GlobePoint) {
-  const [p, q] = [labelBox(a), labelBox(b)];
+function labelsCollide(a: GlobePoint, b: GlobePoint, scale: number) {
+  const [p, q] = [labelBox(a, scale), labelBox(b, scale)];
 
   return p.west < q.east && q.west < p.east && p.south < q.north && q.south < p.north;
+}
+
+// Names are placed in turn, and whichever goes down first takes the side it likes. Where a
+// hop sits a degree below another, the first name hangs across the second and the second has
+// nowhere left to go, though moving the first one up would have left room for both - the
+// target of an IONOS route covered Karlsruhe exactly so. So a name that will not fit gets
+// one more chance: each name already in its way is offered its other sides, and the first
+// move that clears both is taken. One step back, no further.
+function makeRoom(placed: GlobePoint[], candidate: GlobePoint, scale: number) {
+  const clearOf = (entry: GlobePoint, ignore: GlobePoint) =>
+    placed.every((other) => other === ignore || !labelsCollide(entry, other, scale));
+
+  for (const blocker of placed.filter((other) => labelsCollide(candidate, other, scale))) {
+    for (const orientation of ORIENTATIONS.filter((side) => side !== blocker.orientation)) {
+      const shifted = { ...blocker, orientation };
+      const room = clearOf(shifted, blocker)
+        ? ORIENTATIONS.map((side) => ({ ...candidate, orientation: side })).find(
+            (option) => clearOf(option, blocker) && !labelsCollide(option, shifted, scale)
+          )
+        : undefined;
+
+      if (room) {
+        placed[placed.indexOf(blocker)] = shifted;
+
+        return room;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 // Names on the globe: the two ends always, then every hop placed in a city, then the
@@ -498,7 +626,7 @@ function labelsCollide(a: GlobePoint, b: GlobePoint) {
 // keeps it off the names already placed; one with no clear side is left out, so hops that
 // cluster keep one name between them instead of a pile. The two ends are never left out:
 // a target answering from the probe's own city takes the side the probe's name does not.
-function pickLabels(points: GlobePoint[], legs: GlobeLeg[], cities: NamedCity[]): GlobePoint[] {
+function pickLabels(points: GlobePoint[], legs: GlobeLeg[], cities: NamedCity[], scale = 1): GlobePoint[] {
   const placed: GlobePoint[] = [];
   const landings = landingPoints(legs);
   const candidates = [
@@ -508,15 +636,16 @@ function pickLabels(points: GlobePoint[], legs: GlobeLeg[], cities: NamedCity[])
     ...landings,
     ...waypoints(legs, cities, [...points, ...landings])
   ];
-  const clear = (candidate: GlobePoint) => placed.every((other) => !labelsCollide(candidate, other));
+  const clear = (candidate: GlobePoint) => placed.every((other) => !labelsCollide(candidate, other, scale));
 
   for (const candidate of candidates) {
-    const fit = ORIENTATIONS.map((orientation) => ({ ...candidate, orientation })).find(clear);
+    const fit = ORIENTATIONS.map((orientation) => ({ ...candidate, orientation })).find((option) => clear(option));
+    const room = fit ?? makeRoom(placed, candidate, scale);
 
-    if (fit) {
-      placed.push(fit);
+    if (room) {
+      placed.push(room);
     } else if (NEVER_DROPPED.has(candidate.role)) {
-      const taken = new Set(placed.filter((other) => labelsCollide(candidate, other)).map((other) => other.orientation ?? "bottom"));
+      const taken = new Set(placed.filter((other) => labelsCollide(candidate, other, scale)).map((other) => other.orientation ?? "bottom"));
 
       placed.push({ ...candidate, orientation: ORIENTATIONS.find((orientation) => !taken.has(orientation)) ?? "right" });
     }
@@ -566,6 +695,14 @@ interface Session {
   framed: boolean;
   // What the globe currently shows, so the same route is never rebuilt twice.
   routeKey: string;
+  // The route on show, kept so the names can be picked again at another zoom.
+  route?: { points: GlobePoint[]; legs: GlobeLeg[] };
+  labelScale: number;
+  lastAltitude: number;
+  steadySince: number;
+  // One glow material per theme, kept for the life of the page: the texture is drawn on a
+  // canvas, and building it again on every route or every theme flip is work for nothing.
+  halos: Partial<Record<Theme, SpriteMaterial>>;
 }
 
 let session: Session | undefined;
@@ -642,24 +779,39 @@ function createSession(): Session {
       return tip(entry.title ?? entry.label, entry.meta);
     })
     // Hops pulse.
-    .ringAltitude((point: object) => (point === STAND_IN_POINT ? STAND_IN_ALTITUDE : 0.013))
-    .ringMaxRadius((point: object) => ((point as GlobePoint).role === "transit" ? 1.7 : 2.6))
+    .ringAltitude((point: object) => (point === STAND_IN_POINT ? STAND_IN_ALTITUDE : RING_ALTITUDE))
+    .ringMaxRadius((point: object) => (ENDS.has((point as GlobePoint).role) ? 2.6 : 1.7))
     .ringPropagationSpeed(1.1)
     .ringRepeatPeriod(1500)
-    .labelAltitude((point: object) => (point === STAND_IN_POINT ? STAND_IN_ALTITUDE : 0.016))
+    // The glow behind the two ends. Its size follows the names', so it keeps its place beside
+    // the mark instead of swelling into the map as the visitor comes in.
+    .customThreeObject(() => new Sprite(session?.halos[session.theme]))
+    .customThreeObjectUpdate((object: object, datum: object) => {
+      const sprite = object as Sprite;
+      const point = datum as GlobePoint;
+      // At the mark's own height, not the surface's: a hair of difference between them shows
+      // as the glow sliding off the dot once the camera is close.
+      const { x, y, z } = globe.getCoords(point.lat, point.lng, LABEL_ALTITUDE);
+
+      sprite.position.set(x, y, z);
+      sprite.scale.setScalar(HALO_SPAN * (session?.labelScale ?? 1));
+    })
+    .labelAltitude((point: object) => (point === STAND_IN_POINT ? STAND_IN_ALTITUDE : LABEL_ALTITUDE))
     // Hops in full size; the landing stations a chain comes ashore at smaller and fainter,
     // named but never mistaken for a measured point.
-    .labelSize((point: object) => labelSize(point as GlobePoint))
+    .labelSize((point: object) => labelSize(point as GlobePoint, session?.labelScale ?? 1))
     .labelDotOrientation((point: object) => (point as GlobePoint).orientation ?? "bottom")
     .labelDotRadius((point: object) => {
-      const role = (point as GlobePoint).role;
+      const radius = DOT_RADIUS[(point as GlobePoint).role];
 
-      return role === "landing" ? 0.14 : role === "waypoint" ? 0.1 : role === "unreached" ? 0 : 0.3;
+      // The dot is written in degrees like the name, so it shrinks with it; otherwise a
+      // place mark swells into a blob that covers the coast it is meant to point at.
+      return radius * (session?.labelScale ?? 1);
     })
     // Glyph outlines are triangulated on the main thread; two segments per curve is
     // smooth at this size and far cheaper than the default three.
     .labelResolution(2)
-    .labelText("label")
+    .labelText((point: object) => typefaceText((point as GlobePoint).label))
     // Parked: a tiny canvas until a view borrows it.
     .width(2)
     .height(2);
@@ -678,24 +830,32 @@ function createSession(): Session {
     host,
     ready: Promise.resolve(),
     lights: { stars },
+    halos: {},
     cities: [],
     showCables: true,
     theme: "dark",
     attached: false,
     shown: false,
     framed: false,
-    routeKey: ""
+    routeKey: "",
+    labelScale: 1,
+    lastAltitude: Number.NaN,
+    steadySince: 0
   };
 
   globe.pathsData(STAND_IN_PATHS).ringsData([STAND_IN_POINT]).labelsData([STAND_IN_POINT]);
 
   // A handle for poking at the globe from the console, on request only.
-  if (globalThis.location?.hash === "#globe-debug") (globalThis as { __globe?: GlobeInstance }).__globe = globe;
+  if (globalThis.location?.hash === "#globe-debug") {
+    (globalThis as { __globe?: GlobeInstance }).__globe = globe;
+    (globalThis as { __globeSession?: Session }).__globeSession = current;
+  }
 
   const started = performance.now();
   const tick = () => {
     if (current.attached && current.shown) {
       neon(current);
+      fitLabels(current);
 
       if (!REDUCED_MOTION) {
         const time = (performance.now() - started) / 1000;
@@ -782,6 +942,45 @@ function neon(current: Session) {
 }
 
 // The language is part of the key: the hover texts are built with the route.
+// Names are re-picked in steps, and only once the view has come to rest: laying out a name
+// builds its glyphs, and doing that on every turn of the wheel would cost frames while the
+// visitor is still moving.
+const LABEL_SCALE_STEPS = 8;
+const LABEL_SETTLE_MS = 140;
+
+function fitLabels(current: Session) {
+  if (!current.route) {
+    return;
+  }
+
+  const altitude = current.globe.camera().position.length() / current.globe.getGlobeRadius() - 1;
+  const now = performance.now();
+
+  if (Math.abs(altitude - current.lastAltitude) > 0.0005) {
+    current.lastAltitude = altitude;
+    current.steadySince = now;
+
+    return;
+  }
+
+  const scale = Math.round(labelScaleFor(altitude) * LABEL_SCALE_STEPS) / LABEL_SCALE_STEPS;
+
+  if (scale === current.labelScale || now - current.steadySince < LABEL_SETTLE_MS) {
+    return;
+  }
+
+  current.labelScale = scale;
+  current.globe.labelsData([STAND_IN_POINT, ...pickLabels(current.route.points, current.route.legs, current.cities, scale)]);
+  showHalos(current);
+}
+
+// The glows, redrawn. Handing the layer a fresh array rebuilds its sprites, which is how a
+// change of theme reaches their material and a change of zoom reaches their size.
+function showHalos(current: Session) {
+  current.halos[current.theme] ??= haloMaterial(current.theme);
+  current.globe.customLayerData((current.route?.points ?? []).filter((point) => ENDS.has(point.role)));
+}
+
 function routeKey(points: GlobePoint[], legs: GlobeLeg[]) {
   return `${currentLanguage()}#${points.map((point) => `${point.lat},${point.lng},${point.role},${point.kmps ?? "-"}`).join("|")}#${legs.map((leg) => `${leg.path.length}:${leg.kmps ?? "-"}`).join("|")}`;
 }
@@ -804,14 +1003,20 @@ export function presentRoute(points: GlobePoint[], legs: GlobeLeg[]) {
   }
 
   current.routeKey = key;
+  current.route = { points, legs };
   current.globe.pathsData([...STAND_IN_PATHS, ...routePaths(legs)]);
-  current.globe.ringsData([STAND_IN_POINT, ...points.filter((point) => point.role !== "unreached")]).labelsData([STAND_IN_POINT, ...pickLabels(points, legs, current.cities)]);
+  current.globe
+    .ringsData([STAND_IN_POINT, ...points.filter((point) => point.role !== "unreached")])
+    .labelsData([STAND_IN_POINT, ...pickLabels(points, legs, current.cities, current.labelScale)]);
+  showHalos(current);
   current.globe.controls().autoRotate = points.length === 0;
 }
 
 function applyPalette(current: Session) {
   const { globe, theme } = current;
   const palette = PALETTE[theme];
+
+  showHalos(current);
   const material = globe.globeMaterial() as { color?: { set(value: string): void } };
   material.color?.set(palette.globe);
 
@@ -837,14 +1042,23 @@ function applyPalette(current: Session) {
     })
     .ringColor((point: object) => {
       const entry = point as GlobePoint;
-      const color = entry.role === "source" ? palette.source : speedColor(entry.kmps, theme);
+      // An end's pulse is as plain as its mark; the colour around it comes from the glow.
+      const color = ENDS.has(entry.role) ? ENDPOINT_INK[theme] : speedColor(entry.kmps, theme);
 
       return (t: number) => `${color}${Math.round((1 - t) * 200).toString(16).padStart(2, "0")}`;
     })
     .labelColor((point: object) => {
       const role = (point as GlobePoint).role;
 
-      return role === "waypoint" ? palette.waypoint : role === "landing" || role === "unreached" ? palette.landing : palette.label;
+      if (role === "waypoint") return palette.waypoint;
+      if (role === "landing") return palette.landing;
+
+      // The ends and the target that never answered are written in the page's plain ink, a
+      // shade cleaner than a hop's; what sets an end apart is its size and the pulse around
+      // it, not a colour of its own. The unreached target keeps the ink but no dot and no
+      // ring: its name is parked on the last hop that did answer, and a mark there would put
+      // the destination at an address nothing was seen to reach.
+      return ENDS.has(role) || role === "unreached" ? ENDPOINT_INK[theme] : palette.label;
     });
 
   if (current.cables) {

@@ -6,13 +6,50 @@
 import { LandMask, haversineKm, type LatLng } from "./cableRouting";
 import { loadMapData } from "./mapData";
 
+// The globe writes a name by pulling glyph outlines out of a typeface, and the one it
+// ships carries ASCII and Greek only - for anything else three.js quietly substitutes the
+// question mark, which is why "Belém" was drawn "Bel?m". So fold the name to what the
+// typeface can draw: strip the accents that decompose (é -> e, ã -> a, ş -> s), spell out
+// the letters that do not (ø -> o, ß -> ss), and where nothing readable is left - a name
+// in Cyrillic or Chinese - write nothing at all rather than a row of question marks; the
+// dot stays, and hovering it still gives the name in full.
+const FOLD: Record<string, string> = {
+  ø: "o", Ø: "O", ß: "ss", æ: "ae", Æ: "AE", œ: "oe", Œ: "OE", đ: "d", Đ: "D",
+  ð: "d", Ð: "D", þ: "th", Þ: "Th", ł: "l", Ł: "L", ı: "i", ħ: "h", ŋ: "ng", ơ: "o", ư: "u"
+};
+
+export function typefaceText(text: string) {
+  const folded = [...text.normalize("NFD").replace(/\p{M}/gu, "")].map((character) => FOLD[character] ?? character).join("");
+  const drawable = folded.replace(/[^\u0020-\u007E]/g, "");
+
+  return /[A-Za-z0-9]/.test(drawable) ? drawable : "";
+}
+
 export const GLOBE_RADIUS = 100;
 // Above the land polygons (0.006): the coarse 1:110m coastline covers near-shore water in
 // places, and a cable under it looked cut wherever the shore was drawn too generously.
-export const CABLE_ALTITUDE = 0.008;
+// Everything the map draws on the globe sits at one height, just clear of the land caps
+// (0.0015). Height is parallax: a point floating above the sphere is drawn away from the
+// ground beneath it as soon as the globe is turned, and at the old heights a city label
+// slid a dozen pixels off its coastline and the route left its own cable behind.
+export const SURFACE_ALTITUDE = 0.003;
+export const CABLE_ALTITUDE = SURFACE_ALTITUDE;
+// One height for everything is right for the eye and wrong for the pointer. A landing
+// station's dot sits exactly on the route line that runs through it, and the pulse ring of
+// a hop covers both, so all three are the same distance from the camera and which one the
+// hover test picks comes down to rounding. It changed from pixel to pixel and the tooltip
+// flickered between the place, the sea leg, and - since a ring carries no tooltip at all -
+// nothing. So the three are ordered by a hair: the place a visitor points at wins, the leg
+// under it comes next, and the ring, which is decoration, never wins. Two hundredths of a
+// unit on a globe of a hundred is far above the noise and far below what an eye can see;
+// the drift this height causes stays at the one to two pixels the surface height already
+// costs.
+const HOVER_GAP = 0.0002;
+export const LABEL_ALTITUDE = SURFACE_ALTITUDE + HOVER_GAP;
+export const RING_ALTITUDE = SURFACE_ALTITUDE - HOVER_GAP;
 // Above the land polygons (0.006), below the route (0.014): lights sit on the ground, not
 // under it.
-export const CITY_ALTITUDE = 0.0095;
+export const CITY_ALTITUDE = SURFACE_ALTITUDE;
 // A straight segment between two far-apart vertices is a chord through the sphere, and its
 // middle sinks under the surface; long ones are resampled onto the surface this finely.
 // Resampled in latitude and longitude, not along the great circle: the source draws its

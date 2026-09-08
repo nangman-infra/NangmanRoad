@@ -1685,6 +1685,128 @@ input:focus-visible {
   margin: 0 0 0.5rem;
   opacity: 0.82;
 }
+/* Asked over the result, not buried in it: a trace that ran out of hops has one useful
+   thing left to do, and the visitor should not have to find it. */
+.hop-limit {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(4, 10, 22, 0.55);
+}
+.hop-limit__card {
+  /* A comfortable measure: much wider and the eye loses the line it is on. */
+  max-width: 27rem;
+  padding: 1.2rem 1.35rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(94, 231, 255, 0.28);
+  background: linear-gradient(180deg, rgba(12, 22, 40, 0.97), rgba(8, 16, 30, 0.98));
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+}
+.theme-light .hop-limit {
+  background: rgba(148, 163, 184, 0.42);
+}
+.theme-light .hop-limit__card {
+  border-color: rgba(14, 165, 233, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(240, 247, 252, 0.99));
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+}
+.hop-limit__title {
+  margin: 0 0 0.55rem;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+/* One sentence to a line: what the mode does, what it could not do, then what is on offer
+   and the question. A sentence too long for the width still wraps, and Korean wraps between
+   words rather than inside one (keep-all), with the wrapped lines evened out. */
+.hop-limit__line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  word-break: keep-all;
+  /* keep-all will not break inside a word, and a long enough hostname is one word; this is
+     the safety valve that lets it break rather than run out of the card. */
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.hop-limit__line--gap {
+  margin-bottom: 0.7rem;
+}
+.hop-limit__line--ask {
+  margin-bottom: 1.05rem;
+  color: var(--text);
+  font-weight: 600;
+}
+.hop-limit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.hop-limit__action {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.hop-limit__action:hover {
+  border-color: rgba(148, 163, 184, 0.6);
+}
+.hop-limit__action--go {
+  border-color: rgba(94, 231, 255, 0.5);
+  background: rgba(94, 231, 255, 0.12);
+  font-weight: 600;
+}
+.hop-limit__action--go:hover {
+  border-color: rgba(94, 231, 255, 0.85);
+  background: rgba(94, 231, 255, 0.2);
+}
+.theme-light .hop-limit__action--go {
+  border-color: rgba(2, 132, 199, 0.5);
+  background: rgba(2, 132, 199, 0.1);
+}
+.theme-light .hop-limit__action--go:hover {
+  border-color: rgba(2, 132, 199, 0.8);
+  background: rgba(2, 132, 199, 0.18);
+}
+
+/* The way out of a truncated trace. It sits with the note but is never folded away with it:
+   on a phone the note is hidden and this is the one thing there is to do about the result. */
+.route-hud__retry {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 0.6rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(94, 231, 255, 0.42);
+  background: rgba(94, 231, 255, 0.08);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.route-hud__retry:hover {
+  border-color: rgba(94, 231, 255, 0.72);
+  background: rgba(94, 231, 255, 0.16);
+}
+.theme-light .route-hud__retry {
+  border-color: rgba(2, 132, 199, 0.45);
+  background: rgba(2, 132, 199, 0.08);
+}
+.theme-light .route-hud__retry:hover {
+  border-color: rgba(2, 132, 199, 0.75);
+  background: rgba(2, 132, 199, 0.16);
+}
+
 .route-hud__legend {
   display: flex;
   flex-wrap: wrap;
@@ -1731,6 +1853,10 @@ input:focus-visible {
     color: inherit;
     font: inherit;
     font-weight: 600;
+  }
+  .route-hud__retry {
+    margin-bottom: 0.35rem;
+    padding: 0.2rem 0.6rem;
   }
   .route-hud--collapsed .route-hud__legend,
   .route-hud--collapsed .route-hud__summary {

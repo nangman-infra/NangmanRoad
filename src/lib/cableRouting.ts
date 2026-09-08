@@ -26,6 +26,11 @@ export interface RouteSegment {
   // The landing stations at its ends, where the ends are stations with a name.
   from?: string;
   to?: string;
+  // Every named landing station the stretch runs through, ends included. A chain hands
+  // from one cable system to the next at a shared station, and those handovers sit in the
+  // middle of a sea run - Matara on the way round Sri Lanka, Abu Talat at Suez - so the
+  // ends alone leave most of the stations a leg touches with no name anywhere.
+  via?: Array<{ name: string; at: LatLng }>;
   // A land part of a cable's own line: the system crosses an isthmus or reaches a station
   // some way inland, and the packet is on terrestrial fibre for this part.
   terrestrial?: boolean;
@@ -977,11 +982,13 @@ export class CableGraph {
       });
 
       const kept = pieces.filter((piece) => piece.path.length > 1);
+      // A station is a vertex of the line, so it lands in exactly the piece that kept it.
+      const onPiece = (path: LatLng[]) => segment.via?.filter((station) => path.some((point) => point[0] === station.at[0] && point[1] === station.at[1]));
 
       return kept.map((piece, index) =>
         piece.land
-          ? { path: piece.path, sea: false, cables: segment.cables, terrestrial: true }
-          : { path: piece.path, sea: true, cables: segment.cables, from: index === 0 ? segment.from : undefined, to: index === kept.length - 1 ? segment.to : undefined }
+          ? { path: piece.path, sea: false, cables: segment.cables, terrestrial: true, via: onPiece(piece.path) }
+          : { path: piece.path, sea: true, cables: segment.cables, from: index === 0 ? segment.from : undefined, to: index === kept.length - 1 ? segment.to : undefined, via: onPiece(piece.path) }
       );
     });
   }
@@ -1163,6 +1170,10 @@ export class CableGraph {
       }
 
       endId = ids[index];
+
+      const station = name(ids[index]);
+
+      if (station) (current.via ??= []).push({ name: station, at: point });
 
       if (by.sea && by.cable) {
         ridden.set(by.cable, (ridden.get(by.cable) ?? 0) + haversineKm(at(ids[index - 1]), point));

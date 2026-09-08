@@ -5,7 +5,7 @@ import { Activity, Cable, RadioTower, SearchX } from "lucide-react";
 import { greatCircle, haversineKm as tupleKm, type LatLng, type LegDecision, type LegEvidence } from "../lib/cableRouting";
 import { t, useLang } from "../lib/i18n";
 import { routeLeg } from "../lib/routeClient";
-import { NO_SPEED, lighten, segmentSpeed, speedColor, speedGradient } from "../lib/latency";
+import { ENDPOINT, NO_SPEED, lighten, segmentSpeed, speedColor, speedGradient } from "../lib/latency";
 import { legLabel } from "../lib/legLabel";
 import { loadMapData } from "../lib/mapData";
 import type { GlobeLeg, GlobePoint } from "./GlobeView";
@@ -29,7 +29,7 @@ function pathKm(path: LatLng[]) {
 // nothing. Direct legs need no routing at all.
 // One hop leg's drawn shape: a single straight stretch, or the stretches of a routed leg
 // - along cables at sea, overland between landings and hops - in order.
-type LegStretch = Pick<GlobeLeg, "path" | "kind" | "inferred" | "cables" | "crossing" | "from" | "to" | "evidence">;
+type LegStretch = Pick<GlobeLeg, "path" | "kind" | "inferred" | "cables" | "crossing" | "from" | "to" | "via" | "evidence">;
 
 interface LegShape {
   stretches: LegStretch[];
@@ -87,6 +87,7 @@ async function resolveShape(from: LatLng, to: LatLng, mode: PathMode, rttMs?: nu
             cables: segment.cables.length > 0 ? segment.cables : undefined,
             from: segment.from,
             to: segment.to,
+            via: segment.via,
             evidence: decision.evidence
           }))
         }
@@ -349,6 +350,7 @@ function animatePacket(params: { map: L.Map; layer: L.LayerGroup; parts: L.LatLn
   };
 }
 import type { HopResult, MeasurementSource, MeasurementStatus, TraceMode } from "../../shared/types";
+import { HOP_LIMIT, ranOutOfHops } from "../lib/traceLimits";
 
 type RouteVisualizationProps = Readonly<{
   mode: TraceMode;
@@ -359,6 +361,8 @@ type RouteVisualizationProps = Readonly<{
   theme: "light" | "dark";
   error?: string;
   reachedTarget?: boolean;
+  // Offered only where it can help: a traceroute that ran out of hops before the target.
+  onRetryWithMtr?: () => void;
 }>;
 
 interface GeoPoint {
@@ -410,7 +414,11 @@ interface AsMetadata {
 // reaches it, so a hop is coloured the same on the map and on the globe.
 function markerColor(point: GeoPoint, kmps: number | undefined, theme: RouteVisualizationProps["theme"]) {
   if (point.role === "source") {
-    return "#5ee7ff";
+    return ENDPOINT[theme].source;
+  }
+
+  if (point.role === "target") {
+    return ENDPOINT[theme].target;
   }
 
   return speedColor(kmps, theme);
@@ -978,11 +986,12 @@ function routeNote(hops: HopResult[], mode: TraceMode, reachedTarget?: boolean, 
     return base;
   }
 
-  const hopLimit = mode === "mtr" ? 30 : 20;
   const lastAnswer = [...hops].reverse().find((hop) => hop.ip);
-  const ranOutOfHops = hops.length >= hopLimit && Boolean(hops.at(-1)?.ip);
-  const reason = ranOutOfHops
-    ? t("note.hopLimit", { n: hopLimit }) + (mode === "mtr" ? "" : t("note.hopLimitMtr"))
+  // A silent tail is worth naming - it says how far the trace was still being answered - but
+  // it is not the reason the trace stopped when the whole allowance had been spent.
+  const silentTail = lastAnswer && lastAnswer.hopNumber < hops.length ? t("note.lastAnswer", { n: lastAnswer.hopNumber }) : "";
+  const reason = ranOutOfHops(hops, mode, reachedTarget)
+    ? t("note.hopLimit", { n: HOP_LIMIT[mode] }) + silentTail + (mode === "mtr" ? "" : t("note.hopLimitMtr"))
     : t("note.noAnswer", { after: lastAnswer ? t("note.afterHop", { n: lastAnswer.hopNumber }) : "" });
 
   return base + t("note.notReached", { reason });
@@ -1590,7 +1599,7 @@ function displayRouteLongitudes(points: GeoPoint[]) {
   }));
 }
 
-export function RouteVisualization({ mode, status, target, hops, source, theme, error, reachedTarget }: RouteVisualizationProps) {
+export function RouteVisualization({ mode, status, target, hops, source, theme, error, reachedTarget, onRetryWithMtr }: RouteVisualizationProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Labels are built in the page's language; a change rebuilds them.
   const { lang } = useLang();
@@ -2053,6 +2062,11 @@ export function RouteVisualization({ mode, status, target, hops, source, theme, 
                   {hudOpen ? t("hud.hide") : t("hud.details")}
                 </button>
                 <p className="route-hud__note">{routeNote(hops, mode, reachedTarget, hasInferredLegs)}</p>
+                {onRetryWithMtr && mode === "traceout" && ranOutOfHops(hops, mode, reachedTarget) ? (
+                  <button type="button" className="route-hud__retry" onClick={onRetryWithMtr}>
+                    {t("note.retryMtr", { n: HOP_LIMIT.traceout })}
+                  </button>
+                ) : null}
                 <div className="route-legend route-hud__legend">
                   <span className="route-legend__item route-legend__scale">
                     <span className="route-legend__scale-title">{t("hud.latency")}</span>

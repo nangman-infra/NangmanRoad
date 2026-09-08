@@ -9,6 +9,18 @@
 // appends an alpha byte for its fading rings.
 export const NO_SPEED = { dark: "#8b949e", light: "#6b7280" } as const;
 
+// The globe marks the route's two ends the way an instrument marks them, not the way a
+// highlighter does: the dot and the name in the page's own black and white, with no colour
+// of their own. What sets an end apart there is the light drawn around it.
+export const ENDPOINT_INK = { dark: "#ffffff", light: "#0b1220" } as const;
+
+// The flat map marks its two ends the plain way, in colour, as it did before the globe took
+// to marking its own with a glow instead.
+export const ENDPOINT = {
+  dark: { source: "#38bdf8", target: "#c084fc" },
+  light: { source: "#0369a1", target: "#7e22ce" }
+} as const;
+
 const STOPS: Record<"light" | "dark", Array<[number, string]>> = {
   dark: [
     [0, "#ff4d4d"],

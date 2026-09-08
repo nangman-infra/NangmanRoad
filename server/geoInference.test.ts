@@ -1096,7 +1096,15 @@ describe("research network site codes", () => {
     ["ae1.mx1.lon2.uk.geant.net", "London", "GB"],
     ["ae0.mx1.mil2.it.geant.net", "Milan", "IT"],
     ["wnpg1rtr1.canarie.ca", "Winnipeg", "CA"],
-    ["kr-ham144-0.x-win.dfn.de", "Hamburg", "DE"]
+    ["kr-ham144-0.x-win.dfn.de", "Hamburg", "DE"],
+    ["de-ffm.nordu.net", "Frankfurt", "DE"],
+    // The site's airport code, read from the label the operator always writes it in. The
+    // router role in the same name ("ccr41", "owr02", "edge1") is not read as a city.
+    ["be2085.ccr41.mia03.atlas.cogentco.com", "Miami", "US"],
+    ["be2378.ccr21.pdx01.atlas.cogentco.com", "Portland", "US"],
+    ["ae27-0.ier01.cph30.ntwk.msn.net", "Copenhagen", "DK"],
+    ["be1.owr02.bos33.ntwk.msn.net", "Boston", "US"],
+    ["ae610.0.edge1.cwb1.as7195.net", "Curitiba", "BR"]
   ];
 
   it.each(cases)("reads %s as %s", async (hostname, city, country) => {
@@ -1123,5 +1131,16 @@ describe("research network site codes", () => {
 
     expect(tenet.city).toBeUndefined();
     expect(garr.city).toBeUndefined();
+  });
+
+  it("reads a site label only in the names of operators that write one there", async () => {
+    process.env.GEOIP_PROVIDER = "none";
+    process.env.GEOIP_SECONDARY = "none";
+    resetGeoState();
+
+    // Same shape, another operator: nothing says this label is a site code.
+    const [other] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "203.0.113.9", hostname: "be2085.ccr41.mia03.example.net", rttMs: 120, status: "ok" }] });
+
+    expect(other.city).toBeUndefined();
   });
 });

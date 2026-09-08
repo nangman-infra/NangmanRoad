@@ -734,6 +734,11 @@ const researchSites: ResearchSite[] = [
   { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["dor"], city: "Dortmund", country: "DE", latitude: 51.53, longitude: 7.45 },
   { network: "DFN (X-WIN)", domains: ["dfn.de"], codes: ["wue"], city: "Wurzburg", country: "DE", latitude: 49.8, longitude: 9.95 },
   { network: "IX New Zealand", domains: ["ix.nz"], codes: ["akl"], city: "Auckland", country: "NZ", latitude: -36.8485, longitude: 174.7633 },
+  // NORDUnet writes the country and its own city code in the label: "de-ffm.nordu.net".
+  { network: "NORDUnet", domains: ["nordu.net"], labels: ["de-ffm"], city: "Frankfurt", country: "DE", latitude: 50.1, longitude: 8.68 },
+  { network: "NORDUnet", domains: ["nordu.net"], labels: ["de-hmb"], city: "Hamburg", country: "DE", latitude: 53.55, longitude: 10.0 },
+  { network: "NORDUnet", domains: ["nordu.net"], labels: ["uk-hex"], city: "London", country: "GB", latitude: 51.5072, longitude: -0.1276 },
+  { network: "NORDUnet", domains: ["nordu.net"], labels: ["inex"], city: "Dublin", country: "IE", latitude: 53.35, longitude: -6.26 }
 ];
 
 // The label immediately before the network's own domain, digits stripped.
@@ -778,6 +783,39 @@ function siteFromCode(here: SiteOnDomain[], tokens: string[]): SiteMatch | undef
   }
 
   return undefined;
+}
+
+// Operators that write the site's own IATA code in a fixed label, right before their
+// suffix: "be2085.ccr41.mia03.atlas.cogentco.com" is Cogent's third Miami site, and
+// "ae27-0.ier01.cph30.ntwk.msn.net" is Microsoft's in Copenhagen. Read from that position
+// the code needs no database to confirm it, because the position is the operator's own
+// convention - which is what keeps "ccr41" in the same name from being read as Concord.
+const airportLabelDomains = ["atlas.cogentco.com", "ntwk.msn.net", "as7195.net"];
+
+function inferCityFromAirportLabel(hostname: string, normalizedHost: string): GeoCandidate | undefined {
+  const domain = airportLabelDomains.find((entry) => normalizedHost.endsWith(entry));
+
+  if (!domain) {
+    return undefined;
+  }
+
+  const label = siteLabel(normalizedHost, domain);
+  const airport = label.length === 3 ? AIRPORT_CODES[label] : undefined;
+
+  if (!airport) {
+    return undefined;
+  }
+
+  return {
+    city: airport.city,
+    country: airport.country,
+    latitude: airport.latitude,
+    longitude: airport.longitude,
+    confidence: "high",
+    evidence: [`reverse DNS names the site "${label}" in ${hostname}, where this operator writes the airport code of the city (${airport.city})`],
+    precision: "city",
+    source: "reverse_dns"
+  };
 }
 
 function inferCityFromResearchSite(hostname: string, normalizedHost: string, tokens: string[]): GeoCandidate | undefined {
@@ -841,7 +879,9 @@ function inferCityFromHostname(hostname?: string): GeoCandidate | undefined {
     }
   }
 
-  return undefined;
+  // Last, the operator's own site label. The curated names above win first, so a hub keeps
+  // the name a reader expects ("Dallas", not the airport's "Dallas-Fort Worth").
+  return inferCityFromAirportLabel(hostname, normalizedHost);
 }
 
 function inferCitiesFromAirportCodes(hostname: string | undefined, corroborating: GeoCandidate[]): GeoCandidate[] {
