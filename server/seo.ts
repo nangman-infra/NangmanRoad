@@ -5,7 +5,11 @@ const siteName = "Nangman Road";
 const pageTitle = "Nangman Road | Install-free Network Route Visualizer";
 const pageDescription =
   "Visualize Traceout and MTR-style network routes from nearby distributed probes with an install-free browser experience.";
-const imagePath = "/og-image.svg";
+// A raster, and not the SVG that stood here: no link-preview scraper - Slack, KakaoTalk,
+// X, Facebook, Discord - renders an SVG, so the card came up blank wherever the site was
+// shared. JPEG over PNG because the picture is all soft gradient, which costs 750 KB
+// lossless and 76 KB here.
+const imagePath = "/og-image.jpg";
 
 let cachedIndexHtml: Promise<string> | undefined;
 
@@ -95,7 +99,8 @@ function dynamicHead(req: Request, res: Response) {
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`,
     `<meta property="og:url" content="${escapeHtml(canonicalUrl)}" />`,
     `<meta property="og:image" content="${escapeHtml(imageUrl)}" />`,
-    `<meta property="og:image:type" content="image/svg+xml" />`,
+    `<meta property="og:image:type" content="image/jpeg" />`,
+    `<meta property="og:image:alt" content="${escapeHtml(`${siteName} - ${pageDescription}`)}" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
     `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />`,
