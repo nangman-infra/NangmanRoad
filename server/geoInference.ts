@@ -226,6 +226,23 @@ const reverseCache = new Map<string, Promise<string | undefined>>();
 // ponytail: one process-wide pause window; per-endpoint budgets only if this ever runs multi-instance.
 let ipApiPausedUntil = 0;
 
+// Which lookup sources this process is currently holding off, and for how long. A source
+// pauses itself when its provider says the quota is spent; nothing here is a secret, and no
+// key or token is read - these are counts and clocks.
+export function geoBudget() {
+  const left = (until: number) => (until > Date.now() ? Math.ceil((until - Date.now()) / 1_000) : 0);
+
+  return {
+    cachedAddresses: geoCache.size,
+    paused: {
+      "ip-api": left(ipApiPausedUntil),
+      "ipwho.is": left(ipWhoIsPausedUntil),
+      "IP2Location.io": left(ip2LocationPausedUntil),
+      "RIPE IPmap": left(ipmapPausedUntil)
+    }
+  };
+}
+
 export function resetGeoState() {
   geoCache.clear();
   reverseCache.clear();

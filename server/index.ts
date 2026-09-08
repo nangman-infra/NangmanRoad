@@ -1,4 +1,6 @@
-import { peeringDbSummary } from "./geoInference";
+import { geoBudget, peeringDbSummary } from "./geoInference";
+import { globalpingBudget } from "./providers/globalpingProvider";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import compression from "compression";
 import { fileURLToPath } from "node:url";
@@ -10,6 +12,15 @@ import { applySecurityHeaders, corsOptions } from "./security";
 import { sendIndexHtml, sendRobotsTxt, sendSitemapXml } from "./seo";
 import { normalizeMode, normalizeProbeId, normalizeTarget } from "./validation";
 import type { CreateMeasurementRequest, MeasurementEvent } from "../shared/types";
+
+// Same length or not, the comparison takes the same time, so a caller learns nothing from
+// how long a wrong key took to reject.
+function timingSafeEqualString(given: string, expected: string) {
+  const a = Buffer.from(given.padEnd(expected.length).slice(0, expected.length));
+  const b = Buffer.from(expected);
+
+  return timingSafeEqual(a, b) && given.length === expected.length;
+}
 
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
@@ -29,6 +40,22 @@ app.use(express.json({ limit: "24kb" }));
 
 app.get("/robots.txt", sendRobotsTxt);
 app.get("/sitemap.xml", sendSitemapXml);
+
+// What is left of the free tiers this deployment runs on, for whoever set BUDGET_REPORT_KEY
+// and knows it. Counts and clocks only: no key, token or address is read back, so the worst
+// a leaked report says is how busy the hour has been. The key is compared in constant time
+// and an empty one turns the route off entirely, which is what an unconfigured deploy gets.
+app.get("/api/budget", (req, res) => {
+  const expected = process.env.BUDGET_REPORT_KEY?.trim() ?? "";
+  const given = typeof req.query.key === "string" ? req.query.key : "";
+
+  if (expected.length === 0 || !timingSafeEqualString(given, expected)) {
+    res.status(404).json({ error: "Not found." });
+    return;
+  }
+
+  res.json({ measurements: globalpingBudget(), geolocation: geoBudget(), uptimeSeconds: Math.round(process.uptime()) });
+});
 
 app.get("/api/health", (_req, res) => {
   res.json({

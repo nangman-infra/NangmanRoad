@@ -12,11 +12,16 @@ import { createMeasurement, openMeasurementEvents } from "./api";
 import { AppShell, type JourneyState, type ThemeMode } from "./components/AppShell";
 import { RouteVisualization, prepareRouteLegs } from "./components/RouteVisualization";
 import { warmRouter } from "./lib/routeClient";
+import { asksForBudget, fetchBudget, type BudgetReport } from "./lib/budgetReport";
 import { HOP_LIMIT, ranOutOfHops } from "./lib/traceLimits";
 import { TerminalOutput } from "./components/TerminalOutput";
 import { LANG_STORAGE_KEY, LangContext, detectLang, setCurrentLang, t, type Lang } from "./lib/i18n";
 
 const initialTarget = "";
+// What NOTICE obliges anyone redistributing this work to carry, shown here as well: the
+// line is the same string in both places, so a reader of either finds the other unchanged.
+const COPYRIGHT = "Copyright (c) 2026 낭만 인프라. All rights reserved.";
+
 const CONTACT_EMAIL = "heishooni@gmail.com";
 const TEAM_SITE = "https://nangman.cloud";
 const themeStorageKey = "nangman-road-theme";
@@ -136,6 +141,7 @@ export function App() {
   // Asked once per measurement: a visitor who waves it away gets the map, and the note's own
   // button is still there if they change their mind.
   const [hopLimitAsked, setHopLimitAsked] = useState(false);
+  const [budget, setBudget] = useState<BudgetReport | "unavailable" | undefined>();
   // The globe is built at page load and the result waits for it: a longer wait on the
   // probe screen, never a stutter when the map appears. A globe that cannot be built
   // (no WebGL) or takes too long stops holding the result up.
@@ -261,6 +267,13 @@ export function App() {
   async function start(from?: string, useMode?: TraceMode) {
     if (!target.trim()) {
       setError(t("search.empty"));
+      return;
+    }
+
+    // The agreed phrase reports what is left of the free tiers instead of spending any of it.
+    if (!from && !useMode && (await asksForBudget(target))) {
+      setBudget((await fetchBudget(target)) ?? "unavailable");
+
       return;
     }
 
@@ -525,6 +538,9 @@ export function App() {
     <LangContext.Provider value={language}>
       <AppShell journeyState={journeyState} theme={theme}>
         <main className={mainClassName}>{pageContent}</main>
+        {budget ? <BudgetPanel report={budget} onClose={() => setBudget(undefined)} /> : null}
+        {/* The attribution the licence requires, on every screen the page has. */}
+        <p className="page-copyright">{COPYRIGHT}</p>
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2">
           <CornerPopovers />
           <button
@@ -835,6 +851,48 @@ function CornerPopovers() {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function BudgetPanel({ report, onClose }: { report: BudgetReport | "unavailable"; onClose: () => void }) {
+  const measured = report === "unavailable" ? undefined : report;
+  const runs = measured?.measurements;
+  const left =
+    runs?.remaining === undefined
+      ? t("budget.unknown")
+      : `${runs.remaining}${runs.total === undefined ? "" : ` / ${runs.total}`}${runs.resetsInMinutes === undefined ? "" : ` · ${t("budget.resets", { n: runs.resetsInMinutes })}`}`;
+
+  return (
+    <div className="budget" role="dialog" aria-modal="true" aria-labelledby="budget-title">
+      <div className="budget__card">
+        <p className="budget__title" id="budget-title">
+          {t("budget.title")}
+        </p>
+        {measured ? (
+          <>
+            <p className="budget__row">
+              <span>{t("budget.measurements")}</span>
+              <span className="budget__value">{left}</span>
+            </p>
+            <p className="budget__heading">{t("budget.lookups")}</p>
+            {Object.entries(measured.geolocation.paused).map(([name, seconds]) => (
+              <p className="budget__row" key={name}>
+                <span>{name}</span>
+                <span className="budget__value">{seconds === 0 ? t("budget.free") : t("budget.paused", { n: seconds })}</span>
+              </p>
+            ))}
+            <p className="budget__foot">
+              {t("budget.cached", { n: measured.geolocation.cachedAddresses })} · {t("budget.uptime", { n: Math.round(measured.uptimeSeconds / 60) })}
+            </p>
+          </>
+        ) : (
+          <p className="budget__row">{t("budget.failed")}</p>
+        )}
+        <button type="button" className="budget__close" onClick={onClose}>
+          {t("budget.close")}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,23 @@
+Copyright (c) 2026 낭만 인프라. All rights reserved.
+
+This product includes software developed by 낭만 인프라 (https://nangman.cloud),
+licensed under the Apache License, Version 2.0 (see LICENSE). The line above is
+this work's required attribution: section 4(d) of that licence obliges anyone
+redistributing this software, or a work derived from it, to carry the contents
+of this file with their distribution.
+
+The data and services this software uses carry terms of their own, and the
+notice above claims nothing over them:
+
+  Submarine cables and landing stations - (C) TeleGeography, Submarine Cable
+  Map (https://www.submarinecablemap.com), CC BY-SA 4.0.
+
+  Countries, cities, roads and railroads - Natural Earth, public domain.
+
+  Facilities, exchange prefixes and organisations - PeeringDB, under its
+  acceptable use policy (https://www.peeringdb.com/aup).
+
+  IP geolocation - ip-api, ipwho.is, IP2Location.io and RIPE IPmap, each under
+  its own terms of service.
+
+  Measurements - Globalping (https://globalping.io), under its terms.

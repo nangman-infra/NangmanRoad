@@ -29,9 +29,23 @@ const PROBE_CANDIDATES = Number(process.env.GLOBALPING_PROBE_CANDIDATES ?? 3);
 // trade for a fuller budget - so the only thing read back is when the hour resets, to tell a
 // visitor who hits the wall how long to wait.
 let limitResetAt: number | undefined;
+let limitRemaining: number | undefined;
+let limitTotal: number | undefined;
 
 export function resetGlobalpingState() {
   limitResetAt = undefined;
+  limitRemaining = undefined;
+  limitTotal = undefined;
+}
+
+// What the provider last said was left of this hour's measurements. Undefined until the
+// first call of the process, since the count only ever arrives on a reply.
+export function globalpingBudget() {
+  return {
+    remaining: limitRemaining,
+    total: limitTotal,
+    resetsInMinutes: limitResetAt === undefined ? undefined : Math.max(0, Math.ceil((limitResetAt - Date.now()) / 60_000))
+  };
 }
 
 function headerNumber(response: Response, name: string) {
@@ -47,6 +61,9 @@ function noteRateLimit(response: Response) {
   if (resetSeconds !== undefined) {
     limitResetAt = Date.now() + resetSeconds * 1_000;
   }
+
+  limitRemaining = headerNumber(response, "x-ratelimit-remaining") ?? limitRemaining;
+  limitTotal = headerNumber(response, "x-ratelimit-limit") ?? limitTotal;
 }
 
 function minutesUntilReset() {

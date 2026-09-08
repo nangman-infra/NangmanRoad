@@ -322,7 +322,13 @@ Not committed (all in `.gitignore`):
 
 ## License And Attribution
 
-The source is released under the MIT License (`LICENSE`). The data and services it uses come with their own terms:
+The source is released under the Apache License 2.0 (`LICENSE`), with the attribution this work requires in `NOTICE`:
+
+```
+Copyright (c) 2026 낭만 인프라. All rights reserved.
+```
+
+Section 4(d) of that licence obliges anyone who redistributes this software, or a work derived from it, to carry the contents of `NOTICE` with their distribution - in a NOTICE file, in the source or documentation, or on screen wherever third-party notices normally appear. Apache 2.0 was chosen over MIT for that clause and for its explicit patent grant; MIT asks only that the licence text travel inside copies of the source, which a hosted product need never show anyone. The line is also printed at the foot of the map. It claims nothing over the data below, which comes with terms of its own:
 
 | What | Terms | How it is honoured |
 | --- | --- | --- |
