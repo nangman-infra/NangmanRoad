@@ -1,5 +1,5 @@
 import Globe, { type GlobeInstance } from "globe.gl";
-import { AdditiveBlending, BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, NormalBlending, type PerspectiveCamera, Points, ShaderMaterial, Sprite, SpriteMaterial } from "three";
+import { AdditiveBlending, BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, Mesh, MeshBasicMaterial, NormalBlending, type PerspectiveCamera, PlaneGeometry, Points, ShaderMaterial, Vector3 } from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
@@ -519,7 +519,7 @@ function haloMaterial(theme: Theme) {
     context.fillRect(0, 0, HALO_TEXTURE_PIXELS, HALO_TEXTURE_PIXELS);
   }
 
-  return new SpriteMaterial({
+  return new MeshBasicMaterial({
     map: new CanvasTexture(canvas),
     transparent: true,
     depthWrite: false,
@@ -527,6 +527,17 @@ function haloMaterial(theme: Theme) {
     blending: theme === "dark" ? AdditiveBlending : NormalBlending
   });
 }
+
+// The glow lies flat on the map rather than square to the eye. A card held to the eye sinks
+// its far edge under the surface as soon as the globe turns - with 4.5 of half-width over
+// 0.32 of clearance, four degrees is enough - and the depth test cuts the sunk half away.
+// That was the tear on a turned globe. A card laid tangent to the sphere cannot sink into it
+// at any angle: every point of a plane touching a sphere from outside is further from the
+// centre than the point it touches. It foreshortens with the name beside it, which
+// three-globe lays flat too, and it turns its back once the point rounds the far side.
+// A plane faces along +Z; turning that to the point's own upright lays it on the map.
+const PLANE_FACE = new Vector3(0, 0, 1);
+const haloNormal = new Vector3();
 
 // Where the route starts and where it ends are the two things a visitor looks for first,
 // and until now both wore the same white dot as every hop between them - the arrival sat
@@ -702,7 +713,7 @@ interface Session {
   steadySince: number;
   // One glow material per theme, kept for the life of the page: the texture is drawn on a
   // canvas, and building it again on every route or every theme flip is work for nothing.
-  halos: Partial<Record<Theme, SpriteMaterial>>;
+  halos: Partial<Record<Theme, MeshBasicMaterial>>;
 }
 
 let session: Session | undefined;
@@ -785,16 +796,20 @@ function createSession(): Session {
     .ringRepeatPeriod(1500)
     // The glow behind the two ends. Its size follows the names', so it keeps its place beside
     // the mark instead of swelling into the map as the visitor comes in.
-    .customThreeObject(() => new Sprite(session?.halos[session.theme]))
+    // A plane of its own each time, never one shared between them: the layer disposes the
+    // geometry of every object it drops, and a shared one would be pulled out from under
+    // the marks still using it. Four vertices apiece is nothing to pay for that.
+    .customThreeObject(() => new Mesh(new PlaneGeometry(1, 1), session?.halos[session.theme]))
     .customThreeObjectUpdate((object: object, datum: object) => {
-      const sprite = object as Sprite;
+      const halo = object as Mesh;
       const point = datum as GlobePoint;
       // At the mark's own height, not the surface's: a hair of difference between them shows
       // as the glow sliding off the dot once the camera is close.
       const { x, y, z } = globe.getCoords(point.lat, point.lng, LABEL_ALTITUDE);
 
-      sprite.position.set(x, y, z);
-      sprite.scale.setScalar(HALO_SPAN * (session?.labelScale ?? 1));
+      halo.position.set(x, y, z);
+      halo.quaternion.setFromUnitVectors(PLANE_FACE, haloNormal.set(x, y, z).normalize());
+      halo.scale.setScalar(HALO_SPAN * (session?.labelScale ?? 1));
     })
     .labelAltitude((point: object) => (point === STAND_IN_POINT ? STAND_IN_ALTITUDE : LABEL_ALTITUDE))
     // Hops in full size; the landing stations a chain comes ashore at smaller and fainter,
@@ -974,7 +989,7 @@ function fitLabels(current: Session) {
   showHalos(current);
 }
 
-// The glows, redrawn. Handing the layer a fresh array rebuilds its sprites, which is how a
+// The glows, redrawn. Handing the layer a fresh array rebuilds them, which is how a
 // change of theme reaches their material and a change of zoom reaches their size.
 function showHalos(current: Session) {
   current.halos[current.theme] ??= haloMaterial(current.theme);
