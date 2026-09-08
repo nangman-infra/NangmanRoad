@@ -9,6 +9,7 @@ export interface BudgetReport {
     cachedAddresses: number;
     ipApi: { remaining?: number; total: number; resetsInSeconds: number };
     calls: Record<string, number>;
+    configured: Record<string, boolean>;
     paused: Record<string, number>;
   };
   uptimeSeconds: number;

@@ -246,6 +246,15 @@ export function geoBudget() {
       resetsInSeconds: left(ipApiWindowEndsAt)
     },
     calls: { ...lookupCalls },
+    // Whether the deployment turned the source on at all. A source with no key and no URL is
+    // never asked, and reporting it as available because nothing has paused it would be a
+    // lie of omission - it is off, not idle.
+    configured: {
+      "ip-api": Boolean(process.env.IP_API_URL?.trim()),
+      "ipwho.is": process.env.GEOIP_SECONDARY !== "none",
+      "IP2Location.io": Boolean(process.env.IP2LOCATION_API_KEY?.trim()),
+      "RIPE IPmap": process.env.RIPE_IPMAP !== "off"
+    },
     paused: {
       "ip-api": left(ipApiPausedUntil),
       "ipwho.is": left(ipWhoIsPausedUntil),

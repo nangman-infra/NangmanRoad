@@ -863,6 +863,17 @@ function spellDuration(seconds: number) {
   return t("budget.hours", { n: Math.round(seconds / 3600) });
 }
 
+// Whether a source can be asked right now, which is the first thing to know about it: off
+// where the deployment gave it no key or switched it away, waiting where it hit a limit and
+// is holding back, and otherwise there to be used.
+function readiness(geo: BudgetReport["geolocation"], name: string) {
+  if (geo.configured[name] === false) {
+    return t("budget.off");
+  }
+
+  return geo.paused[name] ? t("budget.waiting", { n: spellDuration(geo.paused[name]) }) : t("budget.usable");
+}
+
 function BudgetRow({ name, unit, value, note }: { name: string; unit?: string; value: string; note?: string }) {
   return (
     <p className="budget__row">
@@ -912,13 +923,18 @@ function BudgetPanel({ report, onClose }: { report: BudgetReport | "unavailable"
               value={spent(runs?.remaining, runs?.total, runs?.resetsInSeconds)}
             />
             <p className="budget__heading">{t("budget.lookups")}</p>
-            <BudgetRow name="ip-api" unit={t("budget.perMinute")} value={spent(ipApi?.remaining, ipApi?.total, ipApi?.resetsInSeconds)} />
+            <BudgetRow
+              name="ip-api"
+              unit={t("budget.perMinute")}
+              value={spent(ipApi?.remaining, ipApi?.total, ipApi?.resetsInSeconds)}
+              note={readiness(geo, "ip-api")}
+            />
             {["ipwho.is", "IP2Location.io", "RIPE IPmap"].map((name) => (
               <BudgetRow
                 key={name}
                 name={name}
-                value={geo.paused[name] ? t("budget.pausedFor", { n: spellDuration(geo.paused[name]) }) : t("budget.noQuota")}
-                note={t("budget.asked", { n: geo.calls[name] ?? 0 })}
+                value={readiness(geo, name)}
+                note={`${t("budget.noQuota")} · ${t("budget.asked", { n: geo.calls[name] ?? 0 })}`}
               />
             ))}
             <p className="budget__foot">
