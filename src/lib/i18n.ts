@@ -243,7 +243,7 @@ const MESSAGES: Record<Lang, Record<string, string>> = {
     "budget.close": "닫기",
     "budget.failed": "이 서버에서는 조회할 수 없습니다.",
     "limit.title": "홉 한도에 걸렸습니다",
-    "limit.follows": "traceout은 홉을 {n}개까지만 따라갑니다.",
+    "limit.follows": "Traceroute는 홉을 {n}개까지만 따라갑니다.",
     "limit.missed": "{n}개를 다 쓰고도 {target}에 닿지 못했습니다.",
     "limit.deeper": "MTR은 홉을 {deeper}개까지 따라갑니다.",
     "limit.ask": "MTR로 다시 잴까요?",
