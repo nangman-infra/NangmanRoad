@@ -53,6 +53,19 @@ function configuredSiteUrl() {
   }
 }
 
+// Where the site answers, for a deployment that does not name it. The container runs behind
+// a proxy that keeps the original host to itself, so the request carries the private address
+// it was forwarded to - http://172.16.0.37:8787 - and the page was handing that to scrapers
+// and search engines as the place to fetch its picture from. Nothing outside the house can
+// reach it, which is why the link preview came up empty. PUBLIC_SITE_URL still wins.
+const defaultSiteUrl = "https://road.nangman.cloud";
+
+// A site the public reaches is reached by name. A bare address in the host means the proxy
+// forwarded to one, never the name the visitor typed, so it is not the address to publish.
+function isBareAddress(host: string) {
+  return /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(host) || host.startsWith("[");
+}
+
 function requestSiteUrl(req: Request) {
   const host = req.get("host");
 
@@ -60,7 +73,7 @@ function requestSiteUrl(req: Request) {
     return `http://127.0.0.1:${process.env.PORT ?? 8787}`;
   }
 
-  return `${req.protocol}://${host}`;
+  return isBareAddress(host) ? defaultSiteUrl : `${req.protocol}://${host}`;
 }
 
 export function siteUrlForRequest(req: Request) {

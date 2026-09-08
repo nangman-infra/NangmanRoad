@@ -49,6 +49,17 @@ describe("seo helpers", () => {
     expect(siteUrlForRequest(request({ host: "road.internal:8787", protocol: "http" }))).toBe("http://road.internal:8787");
   });
 
+  it("publishes the site's own name when the proxy forwarded to a bare address", () => {
+    expect(siteUrlForRequest(request({ host: "172.16.0.37:8787", protocol: "http" }))).toBe("https://road.nangman.cloud");
+    expect(siteUrlForRequest(request({ host: "10.0.0.4", protocol: "http" }))).toBe("https://road.nangman.cloud");
+  });
+
+  it("still lets a configured URL win over a bare address", () => {
+    process.env.PUBLIC_SITE_URL = "https://road.example.com";
+
+    expect(siteUrlForRequest(request({ host: "172.16.0.37:8787", protocol: "http" }))).toBe("https://road.example.com");
+  });
+
   it("falls back to localhost when the request has no host", () => {
     process.env.PORT = "8788";
 
