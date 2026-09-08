@@ -8,7 +8,11 @@ services:
     environment:
       NODE_ENV: "production"
       PORT: "8787"
-      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-http://172.16.0.37:8787}"
+      # The address the site answers at from outside, which is what the page publishes as
+      # its own: the canonical link, og:url, and where a link preview is told to fetch the
+      # picture. The private address that stood here is reachable only on this network, so
+      # every scraper sent for the preview came back with nothing.
+      PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://road.nangman.cloud}"
       TRUST_PROXY: "${TRUST_PROXY:-1}"
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-}"
       MEASUREMENT_PROVIDER: "${MEASUREMENT_PROVIDER:-globalping}"
