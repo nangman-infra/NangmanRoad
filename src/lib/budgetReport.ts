@@ -4,8 +4,13 @@
 // only when the deployment sets one), and the server answers 404 to every other caller. The
 // report itself carries counts and clocks, so learning the phrase gains nobody a secret.
 export interface BudgetReport {
-  measurements: { remaining?: number; total?: number; resetsInMinutes?: number };
-  geolocation: { cachedAddresses: number; paused: Record<string, number> };
+  measurements: { remaining?: number; total?: number; resetsInSeconds?: number };
+  geolocation: {
+    cachedAddresses: number;
+    ipApi: { remaining?: number; total: number; resetsInSeconds: number };
+    calls: Record<string, number>;
+    paused: Record<string, number>;
+  };
   uptimeSeconds: number;
 }
 

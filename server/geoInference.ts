@@ -225,6 +225,10 @@ const geoCache = new Map<string, GeoCacheEntry>();
 const reverseCache = new Map<string, Promise<string | undefined>>();
 // ponytail: one process-wide pause window; per-endpoint budgets only if this ever runs multi-instance.
 let ipApiPausedUntil = 0;
+// ip-api answers every call with how many of this minute's 45 requests are left, and how
+// many seconds until the window turns over. Both are kept for the budget report.
+let ipApiRemaining: number | undefined;
+let ipApiWindowEndsAt = 0;
 
 // Which lookup sources this process is currently holding off, and for how long. A source
 // pauses itself when its provider says the quota is spent; nothing here is a secret, and no
@@ -234,6 +238,14 @@ export function geoBudget() {
 
   return {
     cachedAddresses: geoCache.size,
+    // Only ip-api publishes a count; the rest say nothing until they refuse, so for those
+    // the honest report is how many this process has asked and whether it is holding off.
+    ipApi: {
+      remaining: ipApiRemaining,
+      total: IP_API_PER_MINUTE,
+      resetsInSeconds: left(ipApiWindowEndsAt)
+    },
+    calls: { ...lookupCalls },
     paused: {
       "ip-api": left(ipApiPausedUntil),
       "ipwho.is": left(ipWhoIsPausedUntil),
@@ -241,6 +253,18 @@ export function geoBudget() {
       "RIPE IPmap": left(ipmapPausedUntil)
     }
   };
+}
+
+// ip-api's free endpoint allows this many a minute, and says so in its own documentation
+// rather than in a header, so the ceiling is written here and the remainder comes from it.
+const IP_API_PER_MINUTE = 45;
+
+// How many times this process has asked each source since it started. Nothing about a quota
+// - the providers do not say - but it is the true count of what has been spent here.
+const lookupCalls: Record<string, number> = { "ip-api": 0, "ipwho.is": 0, "IP2Location.io": 0, "RIPE IPmap": 0 };
+
+export function noteLookup(source: keyof typeof lookupCalls) {
+  lookupCalls[source] += 1;
 }
 
 export function resetGeoState() {
@@ -1095,6 +1119,9 @@ function headerNumber(response: Response, name: string) {
 function noteIpApiRateLimit(response: Response) {
   const remaining = headerNumber(response, "x-rl");
 
+  ipApiRemaining = remaining ?? ipApiRemaining;
+  ipApiWindowEndsAt = Date.now() + (headerNumber(response, "x-ttl") ?? 0) * 1_000;
+
   if (response.status !== 429 && remaining !== 0) {
     return;
   }
@@ -1115,6 +1142,8 @@ async function fetchIpApi(ip: string): Promise<IpGeoRecord | undefined> {
   if (Date.now() < ipApiPausedUntil) {
     return undefined;
   }
+
+  noteLookup("ip-api");
 
   const timer = timeoutSignal(GEO_TIMEOUT_MS);
 
@@ -1205,6 +1234,8 @@ async function fetchIp2Location(ip: string): Promise<IpGeoRecord | undefined> {
     return undefined;
   }
 
+  noteLookup("IP2Location.io");
+
   const timer = timeoutSignal(GEO_TIMEOUT_MS);
 
   try {
@@ -1263,6 +1294,8 @@ async function fetchRipeIpmap(ip: string): Promise<IpGeoRecord | undefined> {
     return undefined;
   }
 
+  noteLookup("RIPE IPmap");
+
   const timer = timeoutSignal(GEO_TIMEOUT_MS);
 
   try {
@@ -1318,6 +1351,8 @@ async function fetchIpWhoIs(ip: string): Promise<IpGeoRecord | undefined> {
   if (process.env.GEOIP_SECONDARY === "none" || Date.now() < ipWhoIsPausedUntil) {
     return undefined;
   }
+
+  noteLookup("ipwho.is");
 
   const timer = timeoutSignal(GEO_TIMEOUT_MS);
 

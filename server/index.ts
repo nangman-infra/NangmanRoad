@@ -45,7 +45,7 @@ app.get("/sitemap.xml", sendSitemapXml);
 // and knows it. Counts and clocks only: no key, token or address is read back, so the worst
 // a leaked report says is how busy the hour has been. The key is compared in constant time
 // and an empty one turns the route off entirely, which is what an unconfigured deploy gets.
-app.get("/api/budget", (req, res) => {
+app.get("/api/budget", async (req, res) => {
   const expected = process.env.BUDGET_REPORT_KEY?.trim() ?? "";
   const given = typeof req.query.key === "string" ? req.query.key : "";
 
@@ -54,7 +54,7 @@ app.get("/api/budget", (req, res) => {
     return;
   }
 
-  res.json({ measurements: globalpingBudget(), geolocation: geoBudget(), uptimeSeconds: Math.round(process.uptime()) });
+  res.json({ measurements: await globalpingBudget(), geolocation: geoBudget(), uptimeSeconds: Math.round(process.uptime()) });
 });
 
 app.get("/api/health", (_req, res) => {

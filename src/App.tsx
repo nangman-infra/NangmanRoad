@@ -539,8 +539,6 @@ export function App() {
       <AppShell journeyState={journeyState} theme={theme}>
         <main className={mainClassName}>{pageContent}</main>
         {budget ? <BudgetPanel report={budget} onClose={() => setBudget(undefined)} /> : null}
-        {/* The attribution the licence requires, on every screen the page has. */}
-        <p className="page-copyright">{COPYRIGHT}</p>
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2">
           <CornerPopovers />
           <button
@@ -774,6 +772,8 @@ function SearchForm({
       </div>
 
       {error ? <p className="mt-4 text-center text-sm text-signal-amber">{error}</p> : null}
+
+      <p className="search-copyright">{COPYRIGHT}</p>
     </form>
   );
 }
@@ -855,13 +855,48 @@ function CornerPopovers() {
   );
 }
 
+// A clock in the page's own words: seconds under a minute, minutes under an hour.
+function spellDuration(seconds: number) {
+  if (seconds < 60) return t("budget.seconds", { n: Math.max(0, Math.round(seconds)) });
+  if (seconds < 3600) return t("budget.minutes", { n: Math.round(seconds / 60) });
+
+  return t("budget.hours", { n: Math.round(seconds / 3600) });
+}
+
+function BudgetRow({ name, unit, value, note }: { name: string; unit?: string; value: string; note?: string }) {
+  return (
+    <p className="budget__row">
+      <span>
+        {name}
+        {unit ? <span className="budget__note"> {unit}</span> : null}
+      </span>
+      <span className="budget__value">
+        {value}
+        {note ? <span className="budget__note"> · {note}</span> : null}
+      </span>
+    </p>
+  );
+}
+
 function BudgetPanel({ report, onClose }: { report: BudgetReport | "unavailable"; onClose: () => void }) {
   const measured = report === "unavailable" ? undefined : report;
   const runs = measured?.measurements;
-  const left =
-    runs?.remaining === undefined
-      ? t("budget.unknown")
-      : `${runs.remaining}${runs.total === undefined ? "" : ` / ${runs.total}`}${runs.resetsInMinutes === undefined ? "" : ` · ${t("budget.resets", { n: runs.resetsInMinutes })}`}`;
+  const geo = measured?.geolocation;
+  const ipApi = geo?.ipApi;
+  // Only the two providers that publish a count get one; for the rest the honest figure is
+  // how many this server has asked, which is not a quota and is not shown as one.
+  // A ceiling with no count behind it yet means nobody has called the provider since this
+  // process started, which is a different thing from a provider that publishes nothing.
+  const spent = (left: number | undefined, total: number | undefined, resets: number | undefined) => {
+    if (left === undefined) {
+      return total === undefined ? t("budget.unknown") : t("budget.notAsked");
+    }
+
+    // A count with no ceiling behind it is still worth showing; it just cannot be a fraction.
+    const figure = total === undefined ? String(left) : t("budget.left", { left, total });
+
+    return `${figure}${resets ? ` · ${t("budget.resets", { n: spellDuration(resets) })}` : ""}`;
+  };
 
   return (
     <div className="budget" role="dialog" aria-modal="true" aria-labelledby="budget-title">
@@ -869,21 +904,25 @@ function BudgetPanel({ report, onClose }: { report: BudgetReport | "unavailable"
         <p className="budget__title" id="budget-title">
           {t("budget.title")}
         </p>
-        {measured ? (
+        {measured && geo ? (
           <>
-            <p className="budget__row">
-              <span>{t("budget.measurements")}</span>
-              <span className="budget__value">{left}</span>
-            </p>
+            <BudgetRow
+              name={`Globalping · ${t("budget.measurements")}`}
+              unit={t("budget.perHour")}
+              value={spent(runs?.remaining, runs?.total, runs?.resetsInSeconds)}
+            />
             <p className="budget__heading">{t("budget.lookups")}</p>
-            {Object.entries(measured.geolocation.paused).map(([name, seconds]) => (
-              <p className="budget__row" key={name}>
-                <span>{name}</span>
-                <span className="budget__value">{seconds === 0 ? t("budget.free") : t("budget.paused", { n: seconds })}</span>
-              </p>
+            <BudgetRow name="ip-api" unit={t("budget.perMinute")} value={spent(ipApi?.remaining, ipApi?.total, ipApi?.resetsInSeconds)} />
+            {["ipwho.is", "IP2Location.io", "RIPE IPmap"].map((name) => (
+              <BudgetRow
+                key={name}
+                name={name}
+                value={geo.paused[name] ? t("budget.pausedFor", { n: spellDuration(geo.paused[name]) }) : t("budget.noQuota")}
+                note={t("budget.asked", { n: geo.calls[name] ?? 0 })}
+              />
             ))}
             <p className="budget__foot">
-              {t("budget.cached", { n: measured.geolocation.cachedAddresses })} · {t("budget.uptime", { n: Math.round(measured.uptimeSeconds / 60) })}
+              {t("budget.cached", { n: geo.cachedAddresses })} · {t("budget.uptime", { n: spellDuration(measured.uptimeSeconds) })}
             </p>
           </>
         ) : (

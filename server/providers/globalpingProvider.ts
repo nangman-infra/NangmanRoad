@@ -38,13 +38,30 @@ export function resetGlobalpingState() {
   limitTotal = undefined;
 }
 
-// What the provider last said was left of this hour's measurements. Undefined until the
-// first call of the process, since the count only ever arrives on a reply.
-export function globalpingBudget() {
+// What is left of this hour's measurements. The headers on our own calls say so, but only
+// once one has been made, so this asks the provider outright: it publishes the count for the
+// caller's address at /limits, which is the same allowance our measurements spend.
+export async function globalpingBudget() {
+  const base = (process.env.GLOBALPING_API_URL ?? DEFAULT_API_URL).replace(/\/measurements\/?$/, "");
+  const token = process.env.GLOBALPING_TOKEN?.trim();
+  const asked = await fetch(`${base}/limits`, {
+    headers: token ? { accept: "application/json", authorization: `Bearer ${token}` } : { accept: "application/json" },
+    signal: AbortSignal.timeout(4_000)
+  })
+    .then((response) => (response.ok ? (response.json() as Promise<unknown>) : undefined))
+    .catch(() => undefined);
+  const create = (asked as { rateLimit?: { measurements?: { create?: Record<string, number> } } } | undefined)?.rateLimit?.measurements
+    ?.create;
+
+  if (create && typeof create.remaining === "number") {
+    return { remaining: create.remaining, total: create.limit, resetsInSeconds: create.reset };
+  }
+
+  // Failing that, whatever the last measurement's own headers said.
   return {
     remaining: limitRemaining,
     total: limitTotal,
-    resetsInMinutes: limitResetAt === undefined ? undefined : Math.max(0, Math.ceil((limitResetAt - Date.now()) / 60_000))
+    resetsInSeconds: limitResetAt === undefined ? undefined : Math.max(0, Math.round((limitResetAt - Date.now()) / 1_000))
   };
 }
 
