@@ -1,7 +1,7 @@
 // What is left of the free tiers this deployment runs on. Typing an agreed phrase into the
 // search box asks for it instead of measuring - a convenience for whoever runs the server,
-// not a login: the phrase never appears here or in the bundle (only its digest does, and
-// only when the deployment sets one), and the server answers 404 to every other caller. The
+// not a login: the phrase never appears here or in the bundle (only its digest does), and the
+// server answers 404 to every other caller, including one that guessed the digest. The
 // report itself carries counts and clocks, so learning the phrase gains nobody a secret.
 export interface BudgetReport {
   measurements: { remaining?: number; total?: number; resetsInSeconds?: number };
@@ -15,7 +15,12 @@ export interface BudgetReport {
   uptimeSeconds: number;
 }
 
-const DIGEST = (import.meta.env.VITE_BUDGET_KEY_SHA256 as string | undefined)?.trim() ?? "";
+// The phrase this deployment answers to, as its SHA-256. Written here rather than passed in
+// at build time: the digest reaches the browser either way - the page cannot recognise the
+// phrase without it - so keeping it out of the repository bought nothing and cost a build
+// argument, a Dockerfile line and a credential to carry it through Jenkins. The phrase
+// itself is on the server and nowhere else, and a digest does not give it back.
+const DIGEST = "6032b87f1c677894180c7baab0fbb1ffa308d1344b45a105f02df920db83763f";
 
 async function sha256(text: string) {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -27,7 +32,7 @@ async function sha256(text: string) {
 // of a short string, and answers false at once where no phrase was set or the page is served
 // without a secure context, which is where SubtleCrypto is unavailable.
 export async function asksForBudget(typed: string) {
-  if (DIGEST.length === 0 || !globalThis.crypto?.subtle) {
+  if (!globalThis.crypto?.subtle) {
     return false;
   }
 

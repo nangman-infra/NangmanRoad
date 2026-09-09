@@ -13,6 +13,10 @@ services:
       # picture. The private address that stood here is reachable only on this network, so
       # every scraper sent for the preview came back with nothing.
       PUBLIC_SITE_URL: "${PUBLIC_SITE_URL:-https://road.nangman.cloud}"
+      # The phrase that asks the search box for what is left of the free tiers instead of
+      # measuring. Left empty the route does not exist: the server answers 404 and no
+      # deployment but this one has the phrase.
+      BUDGET_REPORT_KEY: "${BUDGET_REPORT_KEY:-}"
       TRUST_PROXY: "${TRUST_PROXY:-1}"
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-}"
       MEASUREMENT_PROVIDER: "${MEASUREMENT_PROVIDER:-globalping}"
