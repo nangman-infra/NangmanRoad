@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -402,6 +402,27 @@ describe("enrichHopsWithGeo", () => {
     expect(hop.locationConfidence).toBe("medium");
     expect(hop.locationEvidence?.join(" ")).toContain("3 of 3 GeoIP databases agree on Tokyo");
     expect(geoBudget().siteCodes.candidates).toMatchObject([{ token: "wxyz", domain: "carrier.test", addresses: 1 }]);
+  });
+
+  it("drops a token the table has since learnt, and never lists a piece of the operator's own name", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "site-codes-"));
+    const file = path.join(dir, "candidates.jsonl");
+    // Sightings written before "fsn" went into the table, and one for a hyphen piece of the
+    // operator's name that an earlier tokeniser let through.
+    writeFileSync(
+      file,
+      [
+        { domain: "hetzner.com", token: "fsn", city: "Nuremberg", country: "DE", ip: "9.9.9.71", hostname: "core22.fsn1.hetzner.com", source: "geoip", at: "2026-09-10T00:00:00.000Z" },
+        { domain: "hetzner.com", token: "rdev", city: "Nuremberg", country: "DE", ip: "9.9.9.72", hostname: "core-spine-rdev1.cloud1.nbg1.hetzner.com", source: "geoip", at: "2026-09-10T00:00:00.000Z" },
+        { domain: "your-server.test", token: "your", city: "Falkenstein", country: "DE", ip: "9.9.9.73", hostname: "static.1.2.3.4.clients.your-server.test", source: "geoip", at: "2026-09-10T00:00:00.000Z" }
+      ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n"
+    );
+    process.env.SITE_CODE_CANDIDATES_FILE = file;
+    resetGeoState();
+
+    expect(geoBudget().siteCodes.candidates.map((candidate) => candidate.token)).toEqual(["rdev"]);
   });
 
   it("does not write a token the code table already placed the router by", async () => {

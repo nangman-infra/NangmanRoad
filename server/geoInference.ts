@@ -294,9 +294,9 @@ function registrableDomain(hostname: string) {
 }
 
 function siteCodeTokens(hostname: string, country: string) {
-  // The operator's own name, with and without its digits: "quad" out of "quad9.net" is the
-  // operator, not a site.
-  const domainLabels = new Set(registrableDomain(hostname).split(".").flatMap((label) => [label, removeLeadingTrailingDigits(label)]));
+  // The operator's own name, in every piece a tokeniser makes of it: "quad" out of
+  // "quad9.net" and "your" out of "your-server.de" are the operator, not a site.
+  const domainLabels = new Set(registrableDomain(hostname).split(/[.-]/).flatMap((label) => [label, removeLeadingTrailingDigits(label)]));
 
   return [...new Set(tokeniseHostname(hostname))].filter((token) => {
     if (!CANDIDATE_TOKEN.test(token) || domainLabels.has(token) || NOT_A_SITE_CODE.has(token)) {
@@ -403,7 +403,18 @@ export function siteCodeCandidates() {
     loadSiteCodeSightings(file);
   }
 
+  // A token the table has since learnt for that operator is no longer a candidate, and one
+  // the tokeniser has since learnt to ignore never was: the file is append-only, the list is
+  // read through today's rules. The synthetic name puts the token where the placement
+  // would read it, under the operator's own domain.
+  const stillCandidate = (tally: SiteCodeTally) => {
+    const country = [...tally.cities.values()][0]?.country ?? "";
+
+    return siteCodeTokens(tally.example, country).includes(tally.token) && !inferCityFromHostname(`${tally.token}.${tally.domain}`);
+  };
+
   return [...siteCodeTallies.values()]
+    .filter(stillCandidate)
     .map((tally) => ({
       token: tally.token,
       domain: tally.domain,
