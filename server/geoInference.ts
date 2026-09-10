@@ -1798,7 +1798,7 @@ function applyGeoConsensus(candidates: GeoCandidate[]): GeoCandidate[] {
   // The cluster speaks with its most central member, not its first: the name and the point
   // must not belong to whichever database was queried first either.
   const spread = (member: GeoCandidate) => winner.reduce((sum, other) => sum + distanceKm(member, other), 0);
-  const centre = winner.reduce((best, member) => (spread(member) < spread(best) ? member : best));
+  const centre = winner.reduce((best, member) => (spread(member) < spread(best) ? member : best), winner[0]);
   const verdict = `${winner.length} of ${databases.length} ${AGREEMENT_NOTE} on ${centre.city}`;
 
   // Unanimity is named, and the site-code candidate list reads it, but it lifts nothing:
