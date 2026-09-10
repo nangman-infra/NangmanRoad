@@ -1291,7 +1291,11 @@ describe("research network site codes", () => {
     ["be2378.ccr21.pdx01.atlas.cogentco.com", "Portland", "US"],
     ["ae27-0.ier01.cph30.ntwk.msn.net", "Copenhagen", "DK"],
     ["be1.owr02.bos33.ntwk.msn.net", "Boston", "US"],
-    ["ae610.0.edge1.cwb1.as7195.net", "Curitiba", "BR"]
+    ["ae610.0.edge1.cwb1.as7195.net", "Curitiba", "BR"],
+    // Hetzner's data-centre parks, read only under its own domain.
+    ["core22.fsn1.hetzner.com", "Falkenstein", "DE"],
+    ["core-spine-rdev1.cloud1.nbg1.hetzner.com", "Nuremberg", "DE"],
+    ["core11.hel1.hetzner.com", "Helsinki", "FI"]
   ];
 
   it.each(cases)("reads %s as %s", async (hostname, city, country) => {

@@ -205,6 +205,21 @@
       "ksyd",
       "Seoul",
       "Telstra"
+    ],
+    [
+      "fsn\\d",
+      "Falkenstein",
+      "Hetzner"
+    ],
+    [
+      "nbg\\d",
+      "Nuremberg",
+      "Hetzner"
+    ],
+    [
+      "hel\\d",
+      "Helsinki",
+      "Hetzner"
     ]
   ],
   "sameMetro": [

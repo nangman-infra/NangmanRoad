@@ -591,6 +591,11 @@ const cityHints: Array<GeoPoint & { aliases: string[]; domains?: string[] }> = [
   { city: "Sydney", country: "AU", latitude: -33.8688, longitude: 151.2093, aliases: ["sydnau"], domains: ["ntt.net"] },
   { city: "Madrid", country: "ES", latitude: 40.4168, longitude: -3.7038, aliases: ["mdrdsp"], domains: ["ntt.net"] },
   { city: "Milan", country: "IT", latitude: 45.4642, longitude: 9.19, aliases: ["mlanit"], domains: ["ntt.net"] },
+  // Hetzner names its backbone after its data-centre parks, in its own domain. Confirmed against
+  // docs.hetzner.com "Data centers and connection": NBG1 Nuremberg, FSN1 Falkenstein, HEL1 Helsinki.
+  { city: "Nuremberg", country: "DE", latitude: 49.4521, longitude: 11.0767, aliases: ["nbg"], domains: ["hetzner.com"] },
+  { city: "Falkenstein", country: "DE", latitude: 50.4779, longitude: 12.3706, aliases: ["fsn"], domains: ["hetzner.com"] },
+  { city: "Helsinki", country: "FI", latitude: 60.1699, longitude: 24.9384, aliases: ["hel"], domains: ["hetzner.com"] },
   // Arelion (Telia Carrier) names its routers with three letters, in its own domain; "sjo"
   // is its San Jose, not Costa Rica's airport, so the scope matters.
   { city: "Frankfurt", country: "DE", latitude: 50.1109, longitude: 8.6821, aliases: ["ffm"], domains: ["twelve99.net"] },
