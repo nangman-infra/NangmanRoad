@@ -937,6 +937,19 @@ function BudgetPanel({ report, onClose }: { report: BudgetReport | "unavailable"
                 note={`${t("budget.noQuota")} · ${t("budget.asked", { n: geo.calls[name] ?? 0 })}`}
               />
             ))}
+            <p className="budget__heading">{t("budget.codes")}</p>
+            {geo.siteCodes?.candidates.length ? (
+              geo.siteCodes.candidates.map((candidate) => (
+                <BudgetRow
+                  key={`${candidate.domain} ${candidate.token}`}
+                  name={`${candidate.token} · ${candidate.domain}`}
+                  value={candidate.cities.map((city) => `${city.city} ${t("budget.codeAddresses", { n: city.addresses })}`).join(", ")}
+                  note={candidate.example}
+                />
+              ))
+            ) : (
+              <p className="budget__row">{geo.siteCodes?.recording ? t("budget.codesNone") : t("budget.off")}</p>
+            )}
             <p className="budget__foot">
               {t("budget.cached", { n: geo.cachedAddresses })} · {t("budget.uptime", { n: spellDuration(measured.uptimeSeconds) })}
             </p>

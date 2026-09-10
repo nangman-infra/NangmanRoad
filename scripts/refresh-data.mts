@@ -32,14 +32,27 @@ const compact = (value: unknown) => JSON.stringify(value);
 
 mkdirSync(cacheDir, { recursive: true });
 
-async function download(url: string, file: string, init: RequestInit = {}) {
+// When the last live request went out, so a source's requests can be spaced under its limit.
+// A cache hit above never counts: spacing is for the network, not the disk.
+let lastFetchAt = 0;
+
+async function download(url: string, file: string, init: RequestInit = {}, spacingMs = 0) {
   const target = path.join(cacheDir, file);
 
   if (!fresh && existsSync(target)) return readFileSync(target);
 
   for (let attempt = 1; ; attempt += 1) {
     try {
+      await sleep(Math.max(0, lastFetchAt + spacingMs - Date.now()));
+      lastFetchAt = Date.now();
+
       const response = await fetch(url, init);
+
+      // A rate limit is not a hiccup: asking again is the same request, which is the thing
+      // being limited, so say what lifts it instead of retrying into it.
+      if (response.status === 429) {
+        throw new Error("HTTP 429, rate limited: wait for the window to pass (PeeringDB: an hour for a repeated large request), or set an API key");
+      }
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -50,13 +63,16 @@ async function download(url: string, file: string, init: RequestInit = {}) {
 
       return body;
     } catch (error) {
-      if (attempt === 4) throw new Error(`${url}: ${error instanceof Error ? error.message : error}`);
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (attempt === 4 || message.startsWith("HTTP 429")) throw new Error(`${url}: ${message}`);
       await sleep(3000 * attempt);
     }
   }
 }
 
-const fetchJson = async <T,>(url: string, file: string, init?: RequestInit) => JSON.parse((await download(url, file, init)).toString("utf8")) as T;
+const fetchJson = async <T,>(url: string, file: string, init?: RequestInit, spacingMs?: number) =>
+  JSON.parse((await download(url, file, init, spacingMs)).toString("utf8")) as T;
 
 function write(file: string, value: unknown) {
   const target = path.join(root, file);
@@ -158,19 +174,22 @@ async function refreshPeeringDb() {
   const PDB = "https://www.peeringdb.com/api";
   const key = process.env.PEERINGDB_API_KEY?.trim();
   const headers = key ? { Authorization: `Api-Key ${key}` } : undefined;
+  // PeeringDB's published limits (docs.peeringdb.com, "Work within PeeringDB's query limits"):
+  // 20 requests a minute anonymous, 40 with a key, and a repeated anonymous request over
+  // 100 KB once an hour. Every page here is over 100 KB, so a run must never ask twice (the
+  // cache) and must stay under the minute limit (the spacing).
+  const spacingMs = key ? 2_000 : 4_000;
 
   async function pages<T>(endpoint: string, fields: string) {
     const rows: T[] = [];
 
     for (let skip = 0; ; skip += 5000) {
-      const page = await fetchJson<{ data: T[] }>(`${PDB}/${endpoint}?limit=5000&skip=${skip}&fields=${fields}`, `pdb-${endpoint}-${skip}.json`, { headers });
+      const page = await fetchJson<{ data: T[] }>(`${PDB}/${endpoint}?limit=5000&skip=${skip}&fields=${fields}`, `pdb-${endpoint}-${skip}.json`, { headers }, spacingMs);
 
       rows.push(...page.data);
       console.log(`peeringdb ${endpoint} ${rows.length}`);
 
       if (page.data.length < 5000) return rows;
-
-      await sleep(1200);
     }
   }
 

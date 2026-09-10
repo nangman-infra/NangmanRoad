@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { reverse } from "node:dns/promises";
 import type {
@@ -195,6 +195,10 @@ interface IpGeoRecord {
 }
 
 const GEO_TIMEOUT_MS = Number(process.env.GEOIP_TIMEOUT_MS ?? 1_400);
+// IPmap gets longer than the databases: it is the one source that measures instead of reading
+// a registration, and it answers slowly (about 400 ms typical, one in ten past 1,300 ms), so
+// the shared limit was throwing away much of the only independent evidence.
+const IPMAP_TIMEOUT_MS = Number(process.env.IPMAP_TIMEOUT_MS ?? 2_500);
 const REVERSE_DNS_TIMEOUT_MS = Number(process.env.REVERSE_DNS_TIMEOUT_MS ?? 900);
 const RTT_NEIGHBOR_TOLERANCE_MS = Number(process.env.RTT_NEIGHBOR_TOLERANCE_MS ?? 5);
 const GEO_LOOKUP_CONCURRENCY = Number(process.env.GEO_LOOKUP_CONCURRENCY ?? 8);
@@ -233,6 +237,186 @@ let ipApiWindowEndsAt = 0;
 // Which lookup sources this process is currently holding off, and for how long. A source
 // pauses itself when its provider says the quota is spent; nothing here is a secret, and no
 // key or token is read - these are counts and clocks.
+// ---------------------------------------------------------------------------------------
+// Site-code candidates. A token in a router's name that no code table knows, written next
+// to where the other evidence put the router, for a person to read. The placement never
+// reads it back: a code learnt from the databases would only repeat their answer under a
+// stronger label, and where they are wrong it would spread the mistake to every router
+// with that token. Confirming one still takes the operator's own naming or a probe nearby.
+const CANDIDATE_TOKEN = /^[a-z]{3,6}$/;
+// Interface names, roles and network words a tokeniser cannot tell from a site code.
+const NOT_A_SITE_CODE = new Set([
+  "core", "edge", "bdr", "rtr", "lag", "eth", "vlan", "bundle", "net", "com", "org", "static", "dynamic",
+  "dyn", "host", "pool", "cust", "res", "biz", "dsl", "cable", "fiber", "fibre", "ppp", "pppoe", "nat", "vpn",
+  "mail", "www", "dns", "unknown", "gateway", "router", "switch", "agg", "access", "dist", "mgmt", "loopback",
+  "link", "port", "isp", "cpe", "cgn", "cgnat", "bras", "bng", "peer", "peering", "transit", "uplink", "border",
+  "backbone", "int", "ext", "ipv", "trunk", "ether", "gig", "ten", "hundred", "bond", "team", "wan", "lan",
+  "cloud", "spine", "leaf", "fabric", "prod", "dev", "test", "stage", "lab", "node", "server", "srv", "vps",
+  "mgt", "oob", "rack", "room", "floor", "site", "colo"
+]);
+
+interface SiteCodeSighting {
+  domain: string;
+  token: string;
+  city: string;
+  country: string;
+  ip: string;
+  hostname: string;
+  source: string;
+  at: string;
+}
+
+interface SiteCodeTally {
+  domain: string;
+  token: string;
+  cities: Map<string, { country: string; ips: Set<string> }>;
+  example: string;
+}
+
+const siteCodeTallies = new Map<string, SiteCodeTally>();
+const siteCodeSeen = new Set<string>();
+let siteCodeFileLoaded: string | undefined;
+
+// Read at call time, not import time, so a test can point it at a scratch file.
+function siteCodeFile() {
+  const value = process.env.SITE_CODE_CANDIDATES_FILE?.trim();
+
+  return value === "off" ? undefined : value || path.join("state", "site-code-candidates.jsonl");
+}
+
+// "ac.za", "com.au", "net.br": a short second-level label under a two-letter country code
+// is part of the registrable name, so the operator is the label before it.
+function registrableDomain(hostname: string) {
+  const labels = hostname.toLowerCase().split(".").filter(Boolean);
+  const take = labels.length >= 3 && (labels.at(-1) ?? "").length === 2 && (labels.at(-2) ?? "").length <= 3 ? 3 : 2;
+
+  return labels.slice(-take).join(".");
+}
+
+function siteCodeTokens(hostname: string, country: string) {
+  // The operator's own name, with and without its digits: "quad" out of "quad9.net" is the
+  // operator, not a site.
+  const domainLabels = new Set(registrableDomain(hostname).split(".").flatMap((label) => [label, removeLeadingTrailingDigits(label)]));
+
+  return [...new Set(tokeniseHostname(hostname))].filter((token) => {
+    if (!CANDIDATE_TOKEN.test(token) || domainLabels.has(token) || NOT_A_SITE_CODE.has(token)) {
+      return false;
+    }
+
+    // An airport code in the router's own country is the automatic path's job already.
+    const airport = token.length === 3 ? AIRPORT_CODES[token] : undefined;
+
+    return !(airport && sameCountry(airport.country, country));
+  });
+}
+
+function tallySiteCode(sighting: SiteCodeSighting, file: string, persist: boolean) {
+  const key = `${sighting.domain} ${sighting.token}`;
+  const seenKey = `${key} ${sighting.ip}`;
+
+  if (siteCodeSeen.has(seenKey)) {
+    return;
+  }
+
+  siteCodeSeen.add(seenKey);
+  const tally = siteCodeTallies.get(key) ?? { domain: sighting.domain, token: sighting.token, cities: new Map(), example: sighting.hostname };
+  const city = tally.cities.get(sighting.city) ?? { country: sighting.country, ips: new Set<string>() };
+
+  city.ips.add(sighting.ip);
+  tally.cities.set(sighting.city, city);
+  siteCodeTallies.set(key, tally);
+
+  if (!persist) {
+    return;
+  }
+
+  // A full disk or a read-only mount must never cost a placement; the list is a convenience.
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+    appendFileSync(file, `${JSON.stringify(sighting)}\n`);
+  } catch {
+    // Nothing to do: the sighting stays in memory for this process.
+  }
+}
+
+function loadSiteCodeSightings(file: string) {
+  if (siteCodeFileLoaded === file) {
+    return;
+  }
+
+  siteCodeFileLoaded = file;
+
+  if (!existsSync(file)) {
+    return;
+  }
+
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    try {
+      if (line.trim()) tallySiteCode(JSON.parse(line) as SiteCodeSighting, file, false);
+    } catch {
+      // A torn last line from an interrupted write is skipped, not fatal.
+    }
+  }
+}
+
+// Only routers the name did not place, and only where the rest of the evidence is firm
+// once the route's physics check has had its say: a candidate next to a guess is two guesses.
+// Firm means a high-confidence answer (a majority vote, a measurement, an exchange prefix)
+// or the databases agreeing unanimously, which stays medium on the map but is as settled
+// as registrations get.
+function noteSiteCodeCandidates(hop: HopResult) {
+  const file = siteCodeFile();
+  const settled =
+    hop.locationConfidence === "high" || (hop.locationEvidence ?? []).some((line) => line.includes(AGREEMENT_NOTE));
+
+  if (
+    !file ||
+    !hop.hostname ||
+    !hop.ip ||
+    isIP(hop.hostname) ||
+    !hop.city ||
+    !hop.country ||
+    !settled ||
+    hop.locationSource === "reverse_dns" ||
+    hop.locationSource === "combined"
+  ) {
+    return;
+  }
+
+  loadSiteCodeSightings(file);
+  const domain = registrableDomain(hop.hostname);
+  const at = new Date().toISOString();
+
+  for (const token of siteCodeTokens(hop.hostname, hop.country)) {
+    tallySiteCode(
+      { domain, token, city: hop.city, country: hop.country, ip: hop.ip, hostname: hop.hostname, source: hop.locationSource ?? "unknown", at },
+      file,
+      true
+    );
+  }
+}
+
+export function siteCodeCandidates() {
+  const file = siteCodeFile();
+
+  if (file) {
+    loadSiteCodeSightings(file);
+  }
+
+  return [...siteCodeTallies.values()]
+    .map((tally) => ({
+      token: tally.token,
+      domain: tally.domain,
+      addresses: new Set([...tally.cities.values()].flatMap((city) => [...city.ips])).size,
+      cities: [...tally.cities.entries()]
+        .map(([city, { country, ips }]) => ({ city, country, addresses: ips.size }))
+        .sort((a, b) => b.addresses - a.addresses),
+      example: tally.example
+    }))
+    .sort((a, b) => b.addresses - a.addresses || a.domain.localeCompare(b.domain) || a.token.localeCompare(b.token))
+    .slice(0, 40);
+}
+
 export function geoBudget() {
   const left = (until: number) => (until > Date.now() ? Math.ceil((until - Date.now()) / 1_000) : 0);
 
@@ -260,7 +444,9 @@ export function geoBudget() {
       "ipwho.is": left(ipWhoIsPausedUntil),
       "IP2Location.io": left(ip2LocationPausedUntil),
       "RIPE IPmap": left(ipmapPausedUntil)
-    }
+    },
+    // Router-name tokens no code table knows, for whoever keeps the table. Read only here.
+    siteCodes: { recording: Boolean(siteCodeFile()), candidates: siteCodeCandidates() }
   };
 }
 
@@ -282,13 +468,16 @@ export function resetGeoState() {
   ipApiPausedUntil = 0;
   ipWhoIsPausedUntil = 0;
   ip2LocationPausedUntil = 0;
+  siteCodeTallies.clear();
+  siteCodeSeen.clear();
+  siteCodeFileLoaded = undefined;
 }
 
 const cityHints: Array<GeoPoint & { aliases: string[]; domains?: string[] }> = [
-  { city: "Seoul", country: "KR", latitude: 37.5665, longitude: 126.978, aliases: ["seoul", "sel", "icn"] },
+  { city: "Seoul", country: "KR", latitude: 37.5665, longitude: 126.978, aliases: ["seoul", "sel", "icn", "kssd", "ksyd"] },
   // Carrier site codes below (NTT "tokyjp", Equinix "eqxty", IIJ "osk", Telia "nyk"...) are the
   // ones verified against operator naming in bench/truth.json - nothing here is guessed.
-  { city: "Tokyo", country: "JP", latitude: 35.6762, longitude: 139.6503, aliases: ["tokyo", "tyo", "nrt", "hnd", "jtha", "tokyjp", "eqxty"] },
+  { city: "Tokyo", country: "JP", latitude: 35.6762, longitude: 139.6503, aliases: ["tokyo", "tyo", "nrt", "hnd", "jtha", "siko", "tokyjp", "eqxty"] },
   { city: "Osaka", country: "JP", latitude: 34.6937, longitude: 135.5023, aliases: ["osaka", "osa", "kix", "osk"] },
   { city: "Hong Kong", country: "HK", latitude: 22.3193, longitude: 114.1694, aliases: ["hongkong", "hong-kong", "hkg", "hkth"] },
   { city: "Taipei", country: "TW", latitude: 25.033, longitude: 121.5654, aliases: ["taipei", "tpe"] },
@@ -1305,7 +1494,7 @@ async function fetchRipeIpmap(ip: string): Promise<IpGeoRecord | undefined> {
 
   noteLookup("RIPE IPmap");
 
-  const timer = timeoutSignal(GEO_TIMEOUT_MS);
+  const timer = timeoutSignal(IPMAP_TIMEOUT_MS);
 
   try {
     const response = await fetch(`https://ipmap-api.ripe.net/v1/locate/${encodeURIComponent(ip)}/best`, {
@@ -1566,6 +1755,9 @@ function geoCandidate(record?: IpGeoRecord): GeoCandidate | undefined {
 }
 
 const GEO_CONSENSUS_RADIUS_KM = 120;
+// The words every database-agreement verdict carries, so the candidate recorder can tell a
+// city the databases settled from one a single database guessed.
+const AGREEMENT_NOTE = "GeoIP databases agree";
 
 function applyGeoConsensus(candidates: GeoCandidate[]): GeoCandidate[] {
   const databases = candidates.filter((candidate) => candidate.source === "geoip");
@@ -1577,29 +1769,54 @@ function applyGeoConsensus(candidates: GeoCandidate[]): GeoCandidate[] {
   // Cluster the databases that put the hop in the same metro, then keep the biggest cluster.
   // A wrong answer for a backbone IP is usually one vendor's stale registration, so two
   // unrelated databases landing together is far stronger than any single verdict.
+  // "Same metro" is read against every member, and a database landing between two clusters
+  // joins them into one: the relation is symmetric, so the verdict cannot depend on which
+  // database happened to be listed first. Three answers in a chain of 60 km steps
+  // (Frankfurt, Mannheim, Karlsruhe) are one cluster, not "two of three agree on Frankfurt".
   const clusters = databases.reduce<GeoCandidate[][]>((groups, candidate) => {
-    const group = groups.find((entry) => distanceKm(entry[0], candidate) < GEO_CONSENSUS_RADIUS_KM);
+    const near = groups.filter((group) => group.some((member) => distanceKm(member, candidate) < GEO_CONSENSUS_RADIUS_KM));
 
-    if (group) {
-      group.push(candidate);
-    } else {
-      groups.push([candidate]);
-    }
-
-    return groups;
+    return [...groups.filter((group) => !near.includes(group)), [...near.flat(), candidate]];
   }, []);
-  const winner = [...clusters].sort((a, b) => b.length - a.length)[0];
+  const [winner, runnerUp] = [...clusters].sort((a, b) => b.length - a.length);
 
-  if (winner.length < 2 || winner.length === databases.length) {
+  // Two clusters of the same size is a tie, not a majority, and calling whichever sorted
+  // first "agreed" would hand it the top confidence on the strength of nothing. Four
+  // sources can split two and two - three databases and RIPE's measurement - so a tie is
+  // left to the ranking below, where a measured answer outweighs a registered one.
+  if (winner.length < 2 || runnerUp?.length === winner.length) {
     return candidates;
+  }
+
+  // "Agree" means every member is within the radius of every other. A chain linked only end
+  // to end (Frankfurt, Mannheim, Karlsruhe) is one cluster for the count, so no minority is
+  // invented out of it, but it names a region, not a city, and gets no verdict.
+  if (!winner.every((a) => winner.every((b) => distanceKm(a, b) < GEO_CONSENSUS_RADIUS_KM))) {
+    return candidates;
+  }
+
+  // The cluster speaks with its most central member, not its first: the name and the point
+  // must not belong to whichever database was queried first either.
+  const spread = (member: GeoCandidate) => winner.reduce((sum, other) => sum + distanceKm(member, other), 0);
+  const centre = winner.reduce((best, member) => (spread(member) < spread(best) ? member : best));
+  const verdict = `${winner.length} of ${databases.length} ${AGREEMENT_NOTE} on ${centre.city}`;
+
+  // Unanimity is named, and the site-code candidate list reads it, but it lifts nothing:
+  // three registrations copying one address are not three witnesses (every database put
+  // the same Singapore router in Sydney), so a unanimous answer stays soft enough for the
+  // route's physics and its neighbours to overrule.
+  if (winner.length === databases.length) {
+    return candidates.map((candidate) =>
+      candidate.source === "geoip" ? { ...candidate, evidence: [...candidate.evidence, verdict] } : candidate
+    );
   }
 
   const names = winner.map((candidate) => candidate.evidence[0]).join("; ");
   const agreed: GeoCandidate = {
-    ...winner[0],
+    ...centre,
     confidence: "high",
-    precision: winner[0].precision === "country" ? "metro" : winner[0].precision,
-    evidence: [`${winner.length} of ${databases.length} GeoIP databases agree on ${winner[0].city}`, names]
+    precision: centre.precision === "country" ? "metro" : centre.precision,
+    evidence: [verdict, names]
   };
 
   // The outvoted database stays on the list, demoted. It never outranks the agreed answer,
@@ -1610,7 +1827,7 @@ function applyGeoConsensus(candidates: GeoCandidate[]): GeoCandidate[] {
     .map<GeoCandidate>((candidate) => ({
       ...candidate,
       confidence: "low",
-      evidence: [...candidate.evidence, `Outvoted by ${winner.length} databases agreeing on ${winner[0].city}`]
+      evidence: [...candidate.evidence, `Outvoted by ${winner.length} databases agreeing on ${centre.city}`]
     }));
 
   return [...candidates.filter((candidate) => candidate.source !== "geoip"), agreed, ...outvoted];
@@ -2409,8 +2626,11 @@ export async function enrichHopsWithGeo(params: {
     source
   ).map((hop) => {
     const network = networkRecord(hop.asn);
+    const named = network ? { ...hop, asName: hop.asName ?? network.name, asOrg: network.organisation } : hop;
 
-    return network ? { ...hop, asName: hop.asName ?? network.name, asOrg: network.organisation } : hop;
+    noteSiteCodeCandidates(named);
+
+    return named;
   });
 }
 

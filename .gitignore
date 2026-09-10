@@ -30,5 +30,7 @@ test-results
 server/data/*.json
 # GeoIP answers cached by the bench
 bench/geo-cache.json
+# What a local server writes between runs (site-code candidates)
+state/
 # Serena tool state
 .serena/

@@ -213,6 +213,7 @@ Before enabling the Jenkins job, confirm these values in `Jenkinsfile`:
 - `APP_HEALTH_URL`
 - external port mapping in the on-prem Docker/Watchtower host
 - SonarQube project key and Quality Gate policy
+- nothing for PeeringDB: the `Fetch PeeringDB` stage builds the PeeringDB-derived files on the agent, and when PeeringDB refuses (anonymous callers get 20 requests a minute and one repeat of a large request an hour) it reuses the files from the image in production, using the Harbor credential the pipeline already has. A `PEERINGDB_API_KEY` in the agent's environment, if one is ever provided, raises the limit to 40 a minute; it is not required
 
 ## Environment
 
@@ -259,6 +260,7 @@ GeoIP options:
 - `RIPE_IPMAP=off`: skips RIPE IPmap, the fourth source, which answers for a minority of backbone addresses with a measured or geofeed-backed city; its silence is normal and never counts as a missing answer.
 - `GEO_CACHE_FILE`: a JSON file of complete GeoIP answers kept on disk (the bench sets it to `bench/geo-cache.json`); unset in production.
 - `PEERINGDB_DATA_DIR`: where the PeeringDB-derived files are read from at startup (default `server/data`); `PEERINGDB_API_KEY` is sent when `npm run data:refresh -- peeringdb` builds them.
+- `SITE_CODE_CANDIDATES_FILE`: where the server writes router-name tokens no code table knows, next to the city the other evidence settled on (default `state/site-code-candidates.jsonl`; `off` stops it). The budget report lists them for whoever keeps the code table; the placement never reads them back, because a code learnt from the databases would only repeat their answer under a stronger label. In the container this is `/app/state` on the `nangman-road-state` volume, so the list survives image swaps.
 
 For production, use a licensed HTTPS GeoIP source such as ip-api Pro. Do not commit provider keys to Git.
 

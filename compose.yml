@@ -24,13 +24,20 @@ services:
       GEOIP_PROVIDER: "${GEOIP_PROVIDER:-ip-api}"
       IP_API_URL: "${IP_API_URL:-http://ip-api.com}"
       IP_API_KEY: "${IP_API_KEY:-}"
+      # A third database, so the vote between them can go two to one. With two the vote never
+      # decides anything: they either agree, or split one apiece and neither wins.
+      IP2LOCATION_API_KEY: "${IP2LOCATION_API_KEY:-}"
       GEOIP_TIMEOUT_MS: "${GEOIP_TIMEOUT_MS:-1400}"
+      IPMAP_TIMEOUT_MS: "${IPMAP_TIMEOUT_MS:-2500}"
       REVERSE_DNS_TIMEOUT_MS: "${REVERSE_DNS_TIMEOUT_MS:-900}"
       RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-8}"
       RATE_LIMIT_PER_HOUR: "${RATE_LIMIT_PER_HOUR:-80}"
       SESSION_TTL_MS: "${SESSION_TTL_MS:-900000}"
       FINISHED_SESSION_TTL_MS: "${FINISHED_SESSION_TTL_MS:-120000}"
       MAX_SESSIONS: "${MAX_SESSIONS:-500}"
+      # Router-name tokens no code table knows, written for whoever keeps the table. Lives on
+      # the volume below so a new image does not start the list over; "off" stops the writing.
+      SITE_CODE_CANDIDATES_FILE: "${SITE_CODE_CANDIDATES_FILE:-/app/state/site-code-candidates.jsonl}"
     ports:
       - "8787:8787"
     healthcheck:
@@ -43,6 +50,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    volumes:
+      - nangman-road-state:/app/state
     networks:
       - nangman-network
     labels:
@@ -79,3 +88,7 @@ services:
 networks:
   nangman-network:
     driver: bridge
+
+volumes:
+  # Survives image swaps and container recreation; docker compose down -v would erase it.
+  nangman-road-state:

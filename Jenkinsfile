@@ -201,6 +201,48 @@ pipeline {
                     }
                 }
 
+                // After the gate, so a build that will not ship never spends a request. Fetched
+                // here on the agent and copied into the image with the tree: inside docker build
+                // it ran once per platform and the image shipped without the files. PeeringDB
+                // allows an anonymous caller 20 requests a minute and one repeat of a large
+                // request an hour, and the agent is a fresh machine every build, so a build that
+                // is refused takes the files from the image already in production rather than
+                // shipping without them. Nothing here needs a Jenkins-side setting; a
+                // PEERINGDB_API_KEY in the environment, if one is ever provided, only speeds it up.
+                stage('Fetch PeeringDB') {
+                    steps {
+                        script {
+                            env.FAILURE_CATEGORY = 'build'
+                            env.FAILURE_STAGE = 'Fetch PeeringDB'
+                            env.FAILURE_REASON = 'PeeringDB 데이터를 받지 못했고 이전 이미지에서도 가져오지 못했습니다. 익명 요청은 분당 20회, 같은 대용량 요청은 시간당 1회로 제한됩니다. 한 시간 뒤 다시 빌드하세요.'
+
+                            withCredentials([
+                                usernamePassword(
+                                    credentialsId: env.HARBOR_CREDS_ID,
+                                    usernameVariable: 'HARBOR_USERNAME',
+                                    passwordVariable: 'HARBOR_PASSWORD'
+                                )
+                            ]) {
+                                sh '''
+                                    set -eu
+                                    if ! npm run data:refresh -- peeringdb; then
+                                        echo "PeeringDB refused the fetch; reusing the files from the image in production"
+                                        echo "$HARBOR_PASSWORD" | docker login "$HARBOR_URL" -u "$HARBOR_USERNAME" --password-stdin
+                                        trap 'docker logout "$HARBOR_URL" >/dev/null 2>&1 || true' EXIT
+                                        docker pull --quiet "$IMAGE_LATEST"
+                                        previous=$(docker create "$IMAGE_LATEST")
+                                        docker cp "$previous:/app/server/data/." server/data/
+                                        docker rm "$previous" >/dev/null
+                                    fi
+                                    test -s server/data/peeringdbCities.json
+                                    test -s server/data/ixpPrefixes.json
+                                    test -s server/data/asOrgs.json
+                                '''
+                            }
+                        }
+                    }
+                }
+
                 stage('Setup Buildx') {
                     steps {
                         script {

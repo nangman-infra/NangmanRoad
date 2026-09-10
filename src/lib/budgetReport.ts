@@ -11,6 +11,18 @@ export interface BudgetReport {
     calls: Record<string, number>;
     configured: Record<string, boolean>;
     paused: Record<string, number>;
+    // Router-name tokens no code table knows, next to where the other evidence put the
+    // router. A list for whoever keeps the table; the placement never reads it.
+    siteCodes?: {
+      recording: boolean;
+      candidates: Array<{
+        token: string;
+        domain: string;
+        addresses: number;
+        cities: Array<{ city: string; country: string; addresses: number }>;
+        example: string;
+      }>;
+    };
   };
   uptimeSeconds: number;
 }

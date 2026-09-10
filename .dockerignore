@@ -18,6 +18,7 @@ pnpm-debug.log*
 
 .vite
 .cache
+state
 *.tsbuildinfo
 
 tmp

@@ -3,6 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 // Complete GeoIP answers are kept in bench/geo-cache.json, so a run costs the free tiers
 // nothing after the first and scores the rules, not the providers' mood that minute.
 process.env.GEO_CACHE_FILE ??= new URL("geo-cache.json", import.meta.url).pathname;
+// A scoring run is not a sighting: nothing it places goes on the site-code candidate list.
+process.env.SITE_CODE_CANDIDATES_FILE ??= "off";
 import { parseRawTraceroute } from "../server/providers/globalpingProvider";
 import { enrichHopsWithGeo } from "../server/geoInference";
 

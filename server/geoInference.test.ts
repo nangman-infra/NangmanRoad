@@ -1,5 +1,8 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enrichHopsWithGeo, measurementConfidence, resetGeoState, resolveGeoProvider } from "./geoInference";
+import { enrichHopsWithGeo, geoBudget, measurementConfidence, resetGeoState, resolveGeoProvider } from "./geoInference";
 
 // These tests count the requests the providers make; RIPE IPmap is a live service and is
 // switched off here, as it can be in production.
@@ -38,6 +41,7 @@ afterEach(() => {
   delete process.env.IP2LOCATION_API_KEY;
   delete process.env.IP2LOCATION_URL;
   delete process.env.IPWHOIS_URL;
+  delete process.env.SITE_CODE_CANDIDATES_FILE;
 
   resetGeoState();
   vi.unstubAllGlobals();
@@ -234,6 +238,189 @@ describe("enrichHopsWithGeo", () => {
     expect(hop.city).toBe("Los Angeles");
     expect(hop.locationConfidence).toBe("high");
     expect(hop.locationEvidence?.join(" ")).toContain("2 of 3 GeoIP databases agree");
+  });
+
+  it("calls a two-against-two split a tie, and lets the measured answer win it", async () => {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    process.env.IPWHOIS_URL = "https://ipwho.test";
+    process.env.IP2LOCATION_URL = "https://ip2location.test/";
+    process.env.IP2LOCATION_API_KEY = "test-key";
+    process.env.RIPE_IPMAP = "on";
+    delete process.env.GEOIP_SECONDARY;
+
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+
+      // Two registrations say London...
+      if (url.includes("ipwho.test")) {
+        return new Response(JSON.stringify({
+          success: true, city: "London", region: "England", country_code: "GB",
+          latitude: 51.5072, longitude: -0.1276, connection: { asn: 3257, org: "GTT", isp: "GTT" }
+        }));
+      }
+
+      // ...one registration and RIPE's measurement say Los Angeles.
+      if (url.includes("ip2location.test")) {
+        return new Response(JSON.stringify({
+          country_code: "US", region_name: "California", city_name: "Los Angeles",
+          latitude: 34.0526, longitude: -118.2439, asn: "3257", as: "GTT"
+        }));
+      }
+
+      if (url.includes("ipmap-api.ripe.net")) {
+        return new Response(JSON.stringify({
+          location: {
+            cityName: "Los Angeles", countryCodeAlpha2: "US", latitude: 34.0522, longitude: -118.2437,
+            score: 40, contributions: { "single-radius": {} }
+          }
+        }));
+      }
+
+      return new Response(JSON.stringify({
+        status: "success", countryCode: "GB", country: "United Kingdom", city: "London",
+        lat: 51.5072, lon: -0.1276, as: "AS3257 GTT"
+      }));
+    }));
+
+    try {
+      const [hop] = await enrichHopsWithGeo({
+        hops: [{ hopNumber: 1, ip: "9.9.9.41", asn: "AS3257", rttMs: 150, status: "ok" }]
+      });
+
+      // Neither pair is a majority, so no "databases agree" verdict is handed out - the
+      // registration side sorted first and would have taken it - and the ranking beneath
+      // it puts the measured answer ahead of the registered one.
+      expect(hop.locationEvidence?.join(" ")).not.toContain("databases agree");
+      expect(hop.city).toBe("Los Angeles");
+    } finally {
+      process.env.RIPE_IPMAP = "off";
+    }
+  });
+
+  // Three databases answering along a chain of short steps. Read against the first answer
+  // only, the middle one joined whichever end was listed first and the other end was
+  // "outvoted"; read symmetrically, the three are one cluster and no majority is declared.
+  const rhine = {
+    frankfurt: { city: "Frankfurt", code: "DE", lat: 50.1109, lon: 8.6821 },
+    mannheim: { city: "Mannheim", code: "DE", lat: 49.4875, lon: 8.466 },
+    karlsruhe: { city: "Karlsruhe", code: "DE", lat: 49.0069, lon: 8.4037 }
+  };
+
+  function stubThreeDatabases(first: typeof rhine.frankfurt, second: typeof rhine.frankfurt, third: typeof rhine.frankfurt) {
+    process.env.GEOIP_PROVIDER = "ip-api";
+    process.env.IP_API_URL = "https://ip-api.test";
+    process.env.IPWHOIS_URL = "https://ipwho.test";
+    process.env.IP2LOCATION_URL = "https://ip2location.test/";
+    process.env.IP2LOCATION_API_KEY = "test-key";
+    delete process.env.GEOIP_SECONDARY;
+
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+
+      if (url.includes("ipwho.test")) {
+        return new Response(JSON.stringify({
+          success: true, city: second.city, country_code: second.code, latitude: second.lat, longitude: second.lon,
+          connection: { asn: 8560, org: "IONOS", isp: "IONOS" }
+        }));
+      }
+
+      if (url.includes("ip2location.test")) {
+        return new Response(JSON.stringify({
+          country_code: third.code, city_name: third.city, latitude: third.lat, longitude: third.lon, asn: "8560", as: "IONOS"
+        }));
+      }
+
+      return new Response(JSON.stringify({
+        status: "success", countryCode: first.code, country: "Germany", city: first.city, lat: first.lat, lon: first.lon, as: "AS8560 IONOS"
+      }));
+    }));
+  }
+
+  it("reads three answers along a chain as one cluster, whichever database is listed first", async () => {
+    stubThreeDatabases(rhine.frankfurt, rhine.mannheim, rhine.karlsruhe);
+    const [listedFrankfurtFirst] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "9.9.9.51", rttMs: 240, status: "ok" }] });
+
+    resetGeoState();
+    stubThreeDatabases(rhine.karlsruhe, rhine.mannheim, rhine.frankfurt);
+    const [listedKarlsruheFirst] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "9.9.9.51", rttMs: 240, status: "ok" }] });
+
+    for (const hop of [listedFrankfurtFirst, listedKarlsruheFirst]) {
+      expect(hop.locationEvidence?.join(" ")).not.toContain("databases agree");
+      expect(hop.locationEvidence?.join(" ")).not.toContain("Outvoted");
+    }
+
+    expect(listedKarlsruheFirst.city).toBe(listedFrankfurtFirst.city);
+  });
+
+  it("still lets two databases outvote a third that lies far from both", async () => {
+    // Berlin cannot bridge Mannheim and Frankfurt, so this is a plain two to one, not a chain.
+    stubThreeDatabases({ city: "Berlin", code: "DE", lat: 52.52, lon: 13.405 }, rhine.mannheim, rhine.frankfurt);
+    const [hop] = await enrichHopsWithGeo({ hops: [{ hopNumber: 1, ip: "9.9.9.52", rttMs: 240, status: "ok" }] });
+
+    expect(hop.locationEvidence?.[0]).toContain("2 of 3 GeoIP databases agree");
+    expect(["Frankfurt", "Mannheim"]).toContain(hop.city);
+  });
+
+  it("writes a router-name token no table knows next to the city the databases agreed on", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "site-codes-")), "candidates.jsonl");
+    process.env.SITE_CODE_CANDIDATES_FILE = file;
+    resetGeoState();
+    stubThreeDatabases(
+      { city: "Tokyo", code: "JP", lat: 35.6762, lon: 139.6503 },
+      { city: "Tokyo", code: "JP", lat: 35.6895, lon: 139.6917 },
+      { city: "Osaka", code: "JP", lat: 34.6937, lon: 135.5023 }
+    );
+
+    const hops = [{ hopNumber: 1, ip: "9.9.9.61", hostname: "ae1.xqzt01.carrier.test", rttMs: 30, status: "ok" as const }];
+    await enrichHopsWithGeo({ hops });
+    // The same router again must not count twice.
+    await enrichHopsWithGeo({ hops });
+
+    const [candidate, ...rest] = geoBudget().siteCodes.candidates;
+
+    expect(rest).toHaveLength(0);
+    expect(candidate).toMatchObject({ token: "xqzt", domain: "carrier.test", addresses: 1, example: "ae1.xqzt01.carrier.test" });
+    expect(candidate.cities).toEqual([{ city: "Tokyo", country: "JP", addresses: 1 }]);
+    expect(readFileSync(file, "utf8").trim().split("\n")).toHaveLength(1);
+  });
+
+  it("writes a token beside a city three databases named unanimously, and says so on the hop", async () => {
+    const file = path.join(mkdtempSync(path.join(tmpdir(), "site-codes-")), "candidates.jsonl");
+    process.env.SITE_CODE_CANDIDATES_FILE = file;
+    resetGeoState();
+    stubThreeDatabases(
+      { city: "Tokyo", code: "JP", lat: 35.6762, lon: 139.6503 },
+      { city: "Tokyo", code: "JP", lat: 35.6895, lon: 139.6917 },
+      { city: "Tokyo", code: "JP", lat: 35.6812, lon: 139.7671 }
+    );
+
+    const [hop] = await enrichHopsWithGeo({
+      hops: [{ hopNumber: 1, ip: "9.9.9.64", hostname: "et-0-0-1.wxyz02.carrier.test", rttMs: 30, status: "ok" }]
+    });
+
+    expect(hop.locationConfidence).toBe("medium");
+    expect(hop.locationEvidence?.join(" ")).toContain("3 of 3 GeoIP databases agree on Tokyo");
+    expect(geoBudget().siteCodes.candidates).toMatchObject([{ token: "wxyz", domain: "carrier.test", addresses: 1 }]);
+  });
+
+  it("does not write a token the code table already placed the router by", async () => {
+    process.env.SITE_CODE_CANDIDATES_FILE = path.join(mkdtempSync(path.join(tmpdir(), "site-codes-")), "candidates.jsonl");
+    resetGeoState();
+    stubThreeDatabases(
+      { city: "Tokyo", code: "JP", lat: 35.6762, lon: 139.6503 },
+      { city: "Tokyo", code: "JP", lat: 35.6895, lon: 139.6917 },
+      { city: "Osaka", code: "JP", lat: 34.6937, lon: 135.5023 }
+    );
+
+    await enrichHopsWithGeo({
+      hops: [
+        { hopNumber: 1, ip: "9.9.9.62", hostname: "i-93.siko01.telstraglobal.net", rttMs: 30, status: "ok" },
+        { hopNumber: 2, ip: "9.9.9.63", hostname: "unknown.telstraglobal.net", rttMs: 31, status: "ok" }
+      ]
+    });
+
+    expect(geoBudget().siteCodes.candidates).toEqual([]);
   });
 
   it("prefers the city two independent GeoIP sources agree on", async () => {

@@ -5,6 +5,10 @@ export default defineConfig({
   test: {
     // The browser walk-through under e2e/ is Playwright's, not Vitest's.
     exclude: [...configDefaults.exclude, "e2e/**"],
+    // A test's placements are not sightings: nothing a suite places may land on the
+    // site-code candidate list in the working tree. The recording tests point it at a
+    // scratch file themselves.
+    env: { SITE_CODE_CANDIDATES_FILE: "off" },
     coverage: {
       provider: "v8",
       // lcov is what SonarQube reads; without it the quality gate sees no coverage at all.

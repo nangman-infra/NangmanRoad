@@ -15,11 +15,11 @@ WORKDIR /app
 ARG VITE_CARTO_API_KEY="cb1_2vcr_1_934e7511f075672d3c38f898"
 ENV VITE_CARTO_API_KEY=$VITE_CARTO_API_KEY
 
+# The PeeringDB-derived files under server/data come in with the tree. The pipeline builds
+# them once, on the agent, before this image (npm run data:refresh -- peeringdb): fetched in
+# here they were requested once per platform, which is past PeeringDB's rate limit, and the
+# image shipped without them. They are never committed (acceptable use policy).
 COPY . .
-# PeeringDB's facility, exchange and organisation data is fetched here, not kept in the
-# repository (its acceptable use policy allows troubleshooting use, not bulk redistribution).
-# A failed fetch leaves the files out; the server then places hops on the other evidence.
-RUN npm run data:refresh -- peeringdb || echo "PeeringDB data not fetched; hop placement will run without it"
 RUN npm run build
 
 FROM node:22-alpine AS runner
@@ -33,6 +33,10 @@ ENV IP_API_URL=http://ip-api.com
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nangman
+# What the server keeps between deployments (the site-code candidate list). The named volume
+# compose mounts here takes this directory's owner when it is first created, so the
+# unprivileged server can write to it.
+RUN mkdir -p /app/state && chown nangman:nodejs /app/state
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
