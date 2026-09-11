@@ -83,6 +83,15 @@ function noteRateLimit(response: Response) {
   limitTotal = headerNumber(response, "x-ratelimit-limit") ?? limitTotal;
 }
 
+// Automatic extras - the TCP re-measure a target silent to ICMP gets - hold off while fewer
+// than this many searches' worth of the hour's allowance is left, so visitors' own searches
+// keep working. Each search asks for PROBE_CANDIDATES probes.
+const RESERVED_SEARCHES = 10;
+
+function allowanceNearlySpent() {
+  return limitRemaining !== undefined && limitRemaining < RESERVED_SEARCHES * PROBE_CANDIDATES;
+}
+
 function minutesUntilReset() {
   return limitResetAt === undefined ? 60 : Math.max(1, Math.ceil((limitResetAt - Date.now()) / 60_000));
 }
@@ -1106,7 +1115,8 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
         currentResult = {
           ...currentResult,
           status: "finished",
-          finishedAt: new Date().toISOString()
+          finishedAt: new Date().toISOString(),
+          allowanceLow: allowanceNearlySpent()
         };
         yield { type: "measurement_finished", payload: currentResult };
         return;

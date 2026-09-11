@@ -349,11 +349,12 @@ function animatePacket(params: { map: L.Map; layer: L.LayerGroup; parts: L.LatLn
     markers.forEach((marker) => marker.remove());
   };
 }
-import type { HopResult, MeasurementSource, MeasurementStatus, TraceMode } from "../../shared/types";
+import type { HopResult, MeasurementSource, MeasurementStatus, TraceMode, TraceProtocol } from "../../shared/types";
 import { HOP_LIMIT, ranOutOfHops } from "../lib/traceLimits";
 
 type RouteVisualizationProps = Readonly<{
   mode: TraceMode;
+  protocol: TraceProtocol;
   status: MeasurementStatus;
   target: string;
   hops: HopResult[];
@@ -979,8 +980,8 @@ function mergeRepeatedDisplayPoints(points: GeoPoint[]) {
 // that trails off into silence reached a network that drops probes. Only the second can be
 // asserted - every measured "hit the limit" so far was a firewall at hop 19-20 too, and MTR's
 // 30 hops found nothing past it - so the wording states what was seen, not a cause.
-function routeNote(hops: HopResult[], mode: TraceMode, reachedTarget?: boolean, inferredSeaLegs = false) {
-  const base = t("note.base", { n: hops.length }) + (inferredSeaLegs ? t("note.inferred") : "");
+function routeNote(hops: HopResult[], mode: TraceMode, protocol: TraceProtocol, reachedTarget?: boolean, inferredSeaLegs = false) {
+  const base = t("note.base", { n: hops.length }) + (inferredSeaLegs ? t("note.inferred") : "") + (protocol === "tcp" ? t("note.tcp") : "");
 
   if (reachedTarget !== false) {
     return base;
@@ -1599,7 +1600,7 @@ function displayRouteLongitudes(points: GeoPoint[]) {
   }));
 }
 
-export function RouteVisualization({ mode, status, target, hops, source, theme, error, reachedTarget, onRetryWithMtr }: RouteVisualizationProps) {
+export function RouteVisualization({ mode, protocol, status, target, hops, source, theme, error, reachedTarget, onRetryWithMtr }: RouteVisualizationProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Labels are built in the page's language; a change rebuilds them.
   const { lang } = useLang();
@@ -2061,7 +2062,7 @@ export function RouteVisualization({ mode, status, target, hops, source, theme, 
                 <button type="button" className="route-hud__toggle" aria-expanded={hudOpen} onClick={() => setHudOpen((open) => !open)}>
                   {hudOpen ? t("hud.hide") : t("hud.details")}
                 </button>
-                <p className="route-hud__note">{routeNote(hops, mode, reachedTarget, hasInferredLegs)}</p>
+                <p className="route-hud__note">{routeNote(hops, mode, protocol, reachedTarget, hasInferredLegs)}</p>
                 {onRetryWithMtr && mode === "traceroute" && ranOutOfHops(hops, mode, reachedTarget) ? (
                   <button type="button" className="route-hud__retry" onClick={onRetryWithMtr}>
                     {t("note.retryMtr", { n: HOP_LIMIT.traceroute })}

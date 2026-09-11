@@ -104,6 +104,10 @@ function commandLines(params: { mode: TraceMode; protocol: TraceProtocol; result
     ? ["notice  Install-free MTR uses Globalping's 16-sample cap; higher-cycle local MTR requires a local agent"]
     : [];
 
+  if (params.protocol === "tcp") {
+    notices.push("notice  Over TCP 443: the target did not answer ICMP");
+  }
+
   if (params.result?.reachedTarget === false) {
     notices.push(`notice  Target not reached within ${params.result.hops.length} hops; output ends at the last router that answered`);
   }

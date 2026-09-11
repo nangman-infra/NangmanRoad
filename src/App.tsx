@@ -14,7 +14,7 @@ import { AppShell, type JourneyState, type ThemeMode } from "./components/AppShe
 import { RouteVisualization, prepareRouteLegs } from "./components/RouteVisualization";
 import { warmRouter } from "./lib/routeClient";
 import { asksForBudget, fetchBudget, type BudgetReport } from "./lib/budgetReport";
-import { HOP_LIMIT, ranOutOfHops, targetIgnoredIcmp } from "./lib/traceLimits";
+import { HOP_LIMIT, ranOutOfHops, tcpRetry } from "./lib/traceLimits";
 import { TerminalOutput } from "./components/TerminalOutput";
 import { LANG_STORAGE_KEY, LangContext, detectLang, setCurrentLang, t, type Lang } from "./lib/i18n";
 
@@ -144,6 +144,8 @@ export function App() {
   // button is still there if they change their mind.
   const [hopLimitAsked, setHopLimitAsked] = useState(false);
   const [tcpAsked, setTcpAsked] = useState(false);
+  // True while the run on screen was started by the page itself, not the visitor.
+  const [autoTcp, setAutoTcp] = useState(false);
   const [budget, setBudget] = useState<BudgetReport | "unavailable" | undefined>();
   // The globe is built at page load and the result waits for it: a longer wait on the
   // probe screen, never a stutter when the map appears. A globe that cannot be built
@@ -222,6 +224,17 @@ export function App() {
     };
   }, [hops, result]);
 
+  // A target whose routers all answered while it ignored ICMP is measured again over TCP 443
+  // once, without asking, unless the hour's allowance is nearly spent - then it asks first.
+  useEffect(() => {
+    if (status !== "finished" || tcpAsked || tcpRetry(hops, mode, latestResult?.reachedTarget, protocol, latestResult?.allowanceLow) !== "auto") {
+      return;
+    }
+
+    setTcpAsked(true);
+    void start(undefined, undefined, "tcp", true);
+  }, [status, tcpAsked, hops, mode, latestResult, protocol]);
+
   function handleEvent(event: MeasurementEvent) {
     switch (event.type) {
       case "measurement_started":
@@ -267,14 +280,14 @@ export function App() {
   // A probe named here re-measures the same target from it, as the result's own control does;
   // a mode named here does the same in the other mode, which is how a traceroute that ran out
   // of hops is followed up with an mtr without the visitor retyping the target.
-  async function start(from?: string, useMode?: TraceMode, useProtocol?: TraceProtocol) {
+  async function start(from?: string, useMode?: TraceMode, useProtocol?: TraceProtocol, automatic = false) {
     if (!target.trim()) {
       setError(t("search.empty"));
       return;
     }
 
     // The agreed phrase reports what is left of the free tiers instead of spending any of it.
-    if (!from && !useMode && (await asksForBudget(target))) {
+    if (!from && !useMode && !useProtocol && (await asksForBudget(target))) {
       setBudget((await fetchBudget(target)) ?? "unavailable");
 
       return;
@@ -295,6 +308,7 @@ export function App() {
     }
 
     setProtocol(traceProtocol);
+    setAutoTcp(automatic);
 
     closeEventsRef.current?.();
 
@@ -507,7 +521,7 @@ export function App() {
           </div>
         ) : null}
 
-        {status === "finished" && !tcpAsked && targetIgnoredIcmp(hops, mode, latestResult?.reachedTarget, protocol) ? (
+        {status === "finished" && !tcpAsked && tcpRetry(hops, mode, latestResult?.reachedTarget, protocol, latestResult?.allowanceLow) === "ask" ? (
           <div className="hop-limit" role="dialog" aria-modal="true" aria-labelledby="unreached-title">
             <div className="hop-limit__card">
               <p className="hop-limit__title" id="unreached-title">
@@ -515,6 +529,7 @@ export function App() {
               </p>
               <p className="hop-limit__line">{t("unreached.icmp", { n: hops.length, target })}</p>
               <p className="hop-limit__line hop-limit__line--gap">{t("unreached.tcp")}</p>
+              <p className="hop-limit__line">{t("unreached.low")}</p>
               <p className="hop-limit__line hop-limit__line--ask">{t("unreached.ask")}</p>
               <div className="hop-limit__actions">
                 <button
@@ -541,6 +556,7 @@ export function App() {
               reachedTarget={latestResult?.reachedTarget}
               onRetryWithMtr={() => start(undefined, "mtr")}
               mode={mode}
+              protocol={protocol}
               status={status}
               target={target}
               hops={hops}
@@ -567,6 +583,7 @@ export function App() {
       <JourneyLaunchStage
         hopCount={hops.length}
         mode={mode}
+        retrying={autoTcp}
         sourceLabel={latestResult?.source ? formatSourceLabel(latestResult.source) : undefined}
         target={target}
       />
@@ -627,11 +644,13 @@ function formatSourceLabel(source: MeasurementResult["source"]) {
 function JourneyLaunchStage({
   hopCount,
   mode,
+  retrying,
   sourceLabel,
   target
 }: Readonly<{
   hopCount: number;
   mode: TraceMode;
+  retrying: boolean;
   sourceLabel?: string;
   target: string;
 }>) {
@@ -646,6 +665,7 @@ function JourneyLaunchStage({
           </p>
           <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">{target}</h2>
           <p className="mt-3 text-sm">{sourceCopy}</p>
+          {retrying ? <p className="mt-2 text-xs">{t("unreached.auto")}</p> : null}
           <p className="journey-launch-status mt-2 text-xs">
             {hopCount > 0 ? t("launch.received", { n: hopCount }) : t("launch.searching")}
           </p>

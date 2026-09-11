@@ -23,3 +23,14 @@ export function ranOutOfHops(hops: HopResult[], mode: TraceMode, reachedTarget?:
 export function targetIgnoredIcmp(hops: HopResult[], mode: TraceMode, reachedTarget: boolean | undefined, protocol: TraceProtocol) {
   return protocol === "icmp" && reachedTarget === false && hops.length > 0 && !ranOutOfHops(hops, mode, reachedTarget);
 }
+
+// What to do about a target that ignored ICMP: measure again over TCP 443 unasked, once, or
+// ask first when the hour's allowance is nearly spent - an automatic extra must not take the
+// last of what visitors' own searches need. A TCP run never qualifies, so this cannot loop.
+export function tcpRetry(hops: HopResult[], mode: TraceMode, reachedTarget: boolean | undefined, protocol: TraceProtocol, allowanceLow?: boolean) {
+  if (!targetIgnoredIcmp(hops, mode, reachedTarget, protocol)) {
+    return undefined;
+  }
+
+  return allowanceLow ? "ask" : "auto";
+}

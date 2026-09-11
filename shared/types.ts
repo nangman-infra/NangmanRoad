@@ -84,6 +84,9 @@ export interface MeasurementResult {
   // trace that ends on some other router must not have the target's name pinned to it.
   targetIp?: string;
   reachedTarget?: boolean;
+  // Set when little of the hour's measurement allowance is left: the page then asks before
+  // spending any of it on an automatic re-measure.
+  allowanceLow?: boolean;
 }
 
 export type MeasurementEventType =

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HOP_LIMIT, ranOutOfHops, targetIgnoredIcmp } from "./traceLimits";
+import { HOP_LIMIT, ranOutOfHops, targetIgnoredIcmp, tcpRetry } from "./traceLimits";
 import type { HopResult } from "../../shared/types";
 
 const answered = (hopNumber: number): HopResult => ({ hopNumber, ip: `10.0.0.${hopNumber}`, status: "ok" });
@@ -58,5 +58,22 @@ describe("telling a target that ignored ICMP from everything else", () => {
     expect(targetIgnoredIcmp(trace(14), "mtr", true, "icmp")).toBe(false);
     expect(targetIgnoredIcmp(trace(14), "mtr", undefined, "icmp")).toBe(false);
     expect(targetIgnoredIcmp([], "mtr", false, "icmp")).toBe(false);
+  });
+});
+
+describe("measuring again over TCP unasked, or asking first", () => {
+  it("measures again unasked while the allowance lasts", () => {
+    expect(tcpRetry(trace(14), "mtr", false, "icmp", false)).toBe("auto");
+    expect(tcpRetry(trace(14), "mtr", false, "icmp", undefined)).toBe("auto");
+  });
+
+  it("asks first once the allowance is nearly spent", () => {
+    expect(tcpRetry(trace(14), "mtr", false, "icmp", true)).toBe("ask");
+  });
+
+  it("does neither where the target answered, the hops ran out, or TCP was already used", () => {
+    expect(tcpRetry(trace(14), "mtr", true, "icmp", false)).toBeUndefined();
+    expect(tcpRetry(trace(HOP_LIMIT.traceroute), "traceroute", false, "icmp", false)).toBeUndefined();
+    expect(tcpRetry(trace(14), "mtr", false, "tcp", false)).toBeUndefined();
   });
 });

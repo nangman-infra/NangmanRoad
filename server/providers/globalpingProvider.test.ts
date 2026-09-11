@@ -202,6 +202,39 @@ describe("runGlobalpingMeasurement", () => {
     vi.useRealTimers();
   });
 
+  it("says when the hour's allowance is nearly spent, so the page asks before measuring again", async () => {
+    vi.useFakeTimers();
+    resetGlobalpingState();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const created = (id: string, remaining: string) =>
+      new Response(JSON.stringify({ id }), { status: 201, headers: { "x-ratelimit-remaining": remaining, "x-ratelimit-reset": "600" } });
+    const finished = () =>
+      new Response(
+        JSON.stringify({
+          status: "finished",
+          // A private hop, so no geolocation lookup takes one of the queued responses.
+          results: [{ probe: { city: "Seoul", country: "KR" }, hops: [{ resolvedAddress: "10.0.0.1", resolvedHostname: "gw", timings: [{ rtt: 1 }] }] }]
+        }),
+        { status: 200 }
+      );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(created("plenty", "200")).mockResolvedValueOnce(finished()).mockResolvedValueOnce(created("scarce", "5")).mockResolvedValueOnce(finished())
+    );
+
+    for (const [id, low] of [["plenty", false], ["scarce", true]] as const) {
+      const events = runGlobalpingMeasurement({ id, mode: "traceroute", target: "example.com", from: "seoul" });
+      await events.next();
+      const hop = events.next();
+      await vi.advanceTimersByTimeAsync(1_250);
+      await hop;
+      await expect(events.next()).resolves.toMatchObject({ value: { type: "measurement_finished", payload: { allowanceLow: low } } });
+    }
+
+    resetGlobalpingState();
+    vi.useRealTimers();
+  });
+
   it("keeps asking the full set of probes as the budget shrinks and explains a 429", async () => {
     vi.useFakeTimers();
     resetGlobalpingState();
