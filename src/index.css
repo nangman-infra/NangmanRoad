@@ -1796,6 +1796,17 @@ input:focus-visible {
   padding: 1rem;
   background: rgba(4, 10, 22, 0.55);
 }
+/* The same overlay as a native dialog: the browser's own dialog box model (content width,
+   auto margins, a border, canvas colours) would shrink it to its card, so it is undone. */
+dialog.hop-limit {
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  color: inherit;
+}
 .hop-limit__card {
   /* A comfortable measure: much wider and the eye loses the line it is on. */
   max-width: 27rem;

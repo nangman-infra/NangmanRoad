@@ -522,7 +522,7 @@ export function App() {
         ) : null}
 
         {status === "finished" && !tcpAsked && tcpRetry(hops, mode, latestResult?.reachedTarget, protocol, latestResult?.allowanceLow) === "ask" ? (
-          <div className="hop-limit" role="dialog" aria-modal="true" aria-labelledby="unreached-title">
+          <dialog open className="hop-limit" aria-labelledby="unreached-title">
             <div className="hop-limit__card">
               <p className="hop-limit__title" id="unreached-title">
                 {t("unreached.title")}
@@ -547,7 +547,7 @@ export function App() {
                 </button>
               </div>
             </div>
-          </div>
+          </dialog>
         ) : null}
 
         <div className="result-stage flex min-h-0 flex-1">
