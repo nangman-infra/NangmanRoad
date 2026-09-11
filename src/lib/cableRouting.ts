@@ -554,6 +554,8 @@ export class CableGraph {
   // Xiamen): they carry those two countries' own traffic and nothing passing through.
   private readonly closed = new Map<string, string>();
   private readonly cableEnds = new Map<string, number[]>();
+  // Each cable system's number, for the search state: which node, on which system.
+  private readonly cableIds = new Map<string, number>();
   // Each cable's owners, as operator keys, with the name the map gives them.
   private readonly owners = new Map<string, Array<{ key: string; name: string }>>();
 
@@ -904,6 +906,8 @@ export class CableGraph {
 
   private link(a: number, b: number, sea: boolean, cost?: number, cable?: string) {
     const km = cost ?? haversineKm([this.nodes[a].lat, this.nodes[a].lng], [this.nodes[b].lat, this.nodes[b].lng]);
+
+    if (cable !== undefined && !this.cableIds.has(cable)) this.cableIds.set(cable, this.cableIds.size + 1);
     this.nodes[a].edges.push({ to: b, km, sea, cable });
     this.nodes[b].edges.push({ to: a, km, sea, cable });
   }
@@ -1120,6 +1124,13 @@ export class CableGraph {
 
     // The search orders chains by cost, overland kilometres at a premium; the detour and
     // latency limits, and the share of the way at sea, are on the kilometres as travelled.
+    // A search state is a node and the system the chain is riding there (0 when it is not on
+    // one: at the start, or after a walk between stations). Two systems whose drawn lines
+    // share a point at sea do not meet there - a cable is joined to another only in a landing
+    // station - so the chain changes system only at a named station, never at such a point.
+    // Keyed by node alone, a third of all cable legs changed system mid-ocean.
+    const stride = this.cableIds.size + 1;
+    const nodeOf = (state: number) => Math.floor(state / stride);
     const cost = new Map<number, number>();
     const travelled = new Map<number, number>();
     const seaKm = new Map<number, number>();
@@ -1129,14 +1140,18 @@ export class CableGraph {
     let best: { node: number; cost: number } | undefined;
 
     for (const start of starts) {
-      cost.set(start.id, start.cost);
-      travelled.set(start.id, start.km);
-      seaKm.set(start.id, 0);
-      heap.push(start.cost, start.id);
+      const state = start.id * stride;
+
+      cost.set(state, start.cost);
+      travelled.set(state, start.km);
+      seaKm.set(state, 0);
+      heap.push(start.cost, state);
     }
 
     while (heap.size > 0) {
       const current = heap.pop();
+      const node = nodeOf(current.node);
+      const riding = current.node % stride;
       const soFar = travelled.get(current.node) ?? 0;
 
       if (current.cost > (cost.get(current.node) ?? Number.POSITIVE_INFINITY) || soFar > budget) {
@@ -1147,7 +1162,7 @@ export class CableGraph {
         break;
       }
 
-      const exit = this.attachmentCost(to, toPlace, current.node);
+      const exit = this.attachmentCost(to, toPlace, node);
 
       if (exit !== undefined) {
         const total = current.cost + exit.cost;
@@ -1169,20 +1184,27 @@ export class CableGraph {
         }
       }
 
-      for (const edge of this.nodes[current.node].edges) {
+      for (const edge of this.nodes[node].edges) {
         if (edge.cable && this.closed.has(edge.cable) && this.closed.get(edge.cable) !== legPair) {
           continue;
         }
 
         const next = current.cost + (edge.sea ? (edge.cable && owned.has(edge.cable) ? edge.km * OWNED_DISCOUNT : edge.km) : edge.km * BRIDGE_PENALTY);
+        const system = edge.sea && edge.cable ? (this.cableIds.get(edge.cable) ?? 0) : 0;
 
-        if (next < (cost.get(edge.to) ?? Number.POSITIVE_INFINITY)) {
-          cost.set(edge.to, next);
-          travelled.set(edge.to, soFar + edge.km);
-          seaKm.set(edge.to, (seaKm.get(current.node) ?? 0) + (edge.sea ? edge.km : 0));
-          cameFrom.set(edge.to, current.node);
-          cameBy.set(edge.to, { sea: edge.sea, cable: edge.cable });
-          heap.push(next, edge.to);
+        if (riding !== 0 && system !== 0 && system !== riding && this.nodes[node].name === undefined) {
+          continue;
+        }
+
+        const state = edge.to * stride + system;
+
+        if (next < (cost.get(state) ?? Number.POSITIVE_INFINITY)) {
+          cost.set(state, next);
+          travelled.set(state, soFar + edge.km);
+          seaKm.set(state, (seaKm.get(current.node) ?? 0) + (edge.sea ? edge.km : 0));
+          cameFrom.set(state, current.node);
+          cameBy.set(state, { sea: edge.sea, cable: edge.cable });
+          heap.push(next, state);
         }
       }
     }
@@ -1191,13 +1213,14 @@ export class CableGraph {
       return fallback;
     }
 
-    const ids: number[] = [];
+    const states: number[] = [];
 
-    for (let node: number | undefined = best.node; node !== undefined; node = cameFrom.get(node)) {
-      ids.push(node);
+    for (let state: number | undefined = best.node; state !== undefined; state = cameFrom.get(state)) {
+      states.push(state);
     }
 
-    ids.reverse();
+    states.reverse();
+    const ids = states.map(nodeOf);
     const at = (id: number): LatLng => [this.nodes[id].lat, this.nodes[id].lng];
 
     // The chain cut where it leaves the sea for the land and back: the overland approach
@@ -1225,7 +1248,7 @@ export class CableGraph {
     };
 
     for (let index = 1; index < ids.length; index += 1) {
-      const by = cameBy.get(ids[index]) ?? { sea: false };
+      const by = cameBy.get(states[index]) ?? { sea: false };
       const point = at(ids[index]);
 
       if (by.sea !== current.sea) {

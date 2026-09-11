@@ -55,6 +55,41 @@ describe("CableGraph", () => {
     expect(path?.some(([lat, lng]) => lat === 9.4 && lng === -79.9)).toBe(true);
   });
 
+  // Two systems whose drawn lines cross mid-ocean share that point in the graph, but nothing
+  // joins two cables at sea: a chain changes system only in a landing station.
+  it("never changes system where two drawn lines merely cross at sea", () => {
+    const crossing = new CableGraph(
+      {
+        features: [
+          { properties: { name: "West-East" }, geometry: { coordinates: [line([[0, 0], [0, 10], [0, 20]])] } },
+          { properties: { name: "South-North" }, geometry: { coordinates: [line([[-10, 10], [0, 10], [10, 10]])] } }
+        ]
+      },
+      undefined,
+      [["West", 0, 0], ["East", 0, 20], ["South", -10, 10], ["North", 10, 10]]
+    );
+    const decision = crossing.decide([0, -0.5], [10.5, 10]);
+    const cables = decision.kind === "cable" ? decision.cables : [];
+
+    expect(cables.includes("West-East") && cables.includes("South-North")).toBe(false);
+  });
+
+  it("still changes system in a named station both lines land at", () => {
+    const hub = new CableGraph(
+      {
+        features: [
+          { properties: { name: "West-Hub" }, geometry: { coordinates: [line([[0, 0], [0, 10]])] } },
+          { properties: { name: "Hub-North" }, geometry: { coordinates: [line([[0, 10], [10, 10]])] } }
+        ]
+      },
+      undefined,
+      [["West", 0, 0], ["Hub", 0, 10], ["North", 10, 10]]
+    );
+    const decision = hub.decide([0, -0.5], [10.5, 10]);
+
+    expect(decision.kind === "cable" ? decision.cables : []).toEqual(["West-Hub", "Hub-North"]);
+  });
+
   it("leaves a short or landlocked leg straight", () => {
     const graph = new CableGraph(collection);
 

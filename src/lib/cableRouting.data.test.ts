@@ -177,8 +177,12 @@ describe("the stations a chain runs through", () => {
     expect(stations([50.11, 8.68], [1.29, 103.85]).map((station) => station.name)).toContain("Matara, Sri Lanka");
   });
 
+  // Paris to Mumbai rides AAE-1 across Egypt. Frankfurt to Mumbai used to as well, but only by
+  // changing systems three times at sea (south of Crete, and twice in the Bab-el-Mandeb); held
+  // to stations it now leaves from Genoa on Blue, crosses Israel with it and takes FEA from
+  // Aqaba, which is not this crossing.
   it("names the two Egyptian stations either side of the Suez land crossing", () => {
-    const names = stations([50.11, 8.68], [19.08, 72.88]).map((station) => station.name);
+    const names = stations([48.85, 2.35], [19.08, 72.88]).map((station) => station.name);
 
     expect(names).toContain("Abu Talat, Egypt");
     expect(names).toContain("Zafarana, Egypt");
