@@ -404,16 +404,18 @@ describe("enrichHopsWithGeo", () => {
     expect(geoBudget().siteCodes.candidates).toMatchObject([{ token: "wxyz", domain: "carrier.test", addresses: 1 }]);
   });
 
-  it("drops a token the table has since learnt, and never lists a piece of the operator's own name", async () => {
+  it("drops a token the table has since learnt, a router role, and a piece of the operator's own name", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "site-codes-"));
     const file = path.join(dir, "candidates.jsonl");
-    // Sightings written before "fsn" went into the table, and one for a hyphen piece of the
-    // operator's name that an earlier tokeniser let through.
+    // Sightings written before "fsn" went into the table and before "rdev" was known for a role,
+    // one for a hyphen piece of the operator's name an earlier tokeniser let through, and one
+    // genuinely unknown code, the only one left to show.
     writeFileSync(
       file,
       [
         { domain: "hetzner.com", token: "fsn", city: "Nuremberg", country: "DE", ip: "9.9.9.71", hostname: "core22.fsn1.hetzner.com", source: "geoip", at: "2026-09-10T00:00:00.000Z" },
         { domain: "hetzner.com", token: "rdev", city: "Nuremberg", country: "DE", ip: "9.9.9.72", hostname: "core-spine-rdev1.cloud1.nbg1.hetzner.com", source: "geoip", at: "2026-09-10T00:00:00.000Z" },
+        { domain: "telstraglobal.test", token: "kdoh", city: "Tokyo", country: "JP", ip: "9.9.9.74", hostname: "i-92.kdoh01.telstraglobal.test", source: "geoip", at: "2026-09-12T00:00:00.000Z" },
         { domain: "your-server.test", token: "your", city: "Falkenstein", country: "DE", ip: "9.9.9.73", hostname: "static.1.2.3.4.clients.your-server.test", source: "geoip", at: "2026-09-10T00:00:00.000Z" }
       ]
         .map((line) => JSON.stringify(line))
@@ -422,7 +424,7 @@ describe("enrichHopsWithGeo", () => {
     process.env.SITE_CODE_CANDIDATES_FILE = file;
     resetGeoState();
 
-    expect(geoBudget().siteCodes.candidates.map((candidate) => candidate.token)).toEqual(["rdev"]);
+    expect(geoBudget().siteCodes.candidates.map((candidate) => candidate.token)).toEqual(["kdoh"]);
   });
 
   it("does not write a token the code table already placed the router by", async () => {
@@ -1316,7 +1318,10 @@ describe("research network site codes", () => {
     // Hetzner's data-centre parks, read only under its own domain.
     ["core22.fsn1.hetzner.com", "Falkenstein", "DE"],
     ["core-spine-rdev1.cloud1.nbg1.hetzner.com", "Nuremberg", "DE"],
-    ["core11.hel1.hetzner.com", "Helsinki", "FI"]
+    ["core11.hel1.hetzner.com", "Helsinki", "FI"],
+    // Tata's routers at its Toyohashi landing carry the city's own name; IONOS's UK backbone its site code.
+    ["if-ae-58-2.tcore1.av3-toyohashi.as6453.net", "Toyohashi", "JP"],
+    ["bb-d.ba.slo.gb.oneandone.net", "Slough", "GB"]
   ];
 
   it.each(cases)("reads %s as %s", async (hostname, city, country) => {

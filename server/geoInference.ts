@@ -252,7 +252,9 @@ const NOT_A_SITE_CODE = new Set([
   "link", "port", "isp", "cpe", "cgn", "cgnat", "bras", "bng", "peer", "peering", "transit", "uplink", "border",
   "backbone", "int", "ext", "ipv", "trunk", "ether", "gig", "ten", "hundred", "bond", "team", "wan", "lan",
   "cloud", "spine", "leaf", "fabric", "prod", "dev", "test", "stage", "lab", "node", "server", "srv", "vps",
-  "mgt", "oob", "rack", "room", "floor", "site", "colo"
+  "mgt", "oob", "rack", "room", "floor", "site", "colo",
+  // Seen on the list and not places: Tata's and Hetzner's router roles, an exchange's own name.
+  "tcore", "rdev", "linx"
 ]);
 
 interface SiteCodeSighting {
@@ -490,6 +492,8 @@ const cityHints: Array<GeoPoint & { aliases: string[]; domains?: string[] }> = [
   // ones verified against operator naming in bench/truth.json - nothing here is guessed.
   { city: "Tokyo", country: "JP", latitude: 35.6762, longitude: 139.6503, aliases: ["tokyo", "tyo", "nrt", "hnd", "jtha", "siko", "tokyjp", "eqxty"] },
   { city: "Osaka", country: "JP", latitude: 34.6937, longitude: 135.5023, aliases: ["osaka", "osa", "kix", "osk"] },
+  // Tata names its routers at its Tata TGN-Pacific landing after the city itself (av3-toyohashi).
+  { city: "Toyohashi", country: "JP", latitude: 34.7692, longitude: 137.3915, aliases: ["toyohashi"] },
   { city: "Hong Kong", country: "HK", latitude: 22.3193, longitude: 114.1694, aliases: ["hongkong", "hong-kong", "hkg", "hkth"] },
   { city: "Taipei", country: "TW", latitude: 25.033, longitude: 121.5654, aliases: ["taipei", "tpe"] },
   { city: "Singapore", country: "SG", latitude: 1.3521, longitude: 103.8198, aliases: ["singapore", "sin", "sgp", "eqxsg"] },
@@ -607,6 +611,9 @@ const cityHints: Array<GeoPoint & { aliases: string[]; domains?: string[] }> = [
   { city: "Nuremberg", country: "DE", latitude: 49.4521, longitude: 11.0767, aliases: ["nbg"], domains: ["hetzner.com"] },
   { city: "Falkenstein", country: "DE", latitude: 50.4779, longitude: 12.3706, aliases: ["fsn"], domains: ["hetzner.com"] },
   { city: "Helsinki", country: "FI", latitude: 60.1699, longitude: 24.9384, aliases: ["hel"], domains: ["hetzner.com"] },
+  // IONOS (1&1) names its UK backbone by site and country (bb-d.ba.slo.gb.oneandone.net), and
+  // PeeringDB lists AS8560 in Slough; read only under its own domain.
+  { city: "Slough", country: "GB", latitude: 51.5105, longitude: -0.595, aliases: ["slo"], domains: ["oneandone.net"] },
   // Arelion (Telia Carrier) names its routers with three letters, in its own domain; "sjo"
   // is its San Jose, not Costa Rica's airport, so the scope matters.
   { city: "Frankfurt", country: "DE", latitude: 50.1109, longitude: 8.6821, aliases: ["ffm"], domains: ["twelve99.net"] },

@@ -220,6 +220,16 @@
       "hel\\d",
       "Helsinki",
       "Hetzner"
+    ],
+    [
+      "toyohashi",
+      "Toyohashi",
+      "Tata"
+    ],
+    [
+      "\\.slo\\.gb\\.oneandone",
+      "Slough",
+      "IONOS"
     ]
   ],
   "sameMetro": [
