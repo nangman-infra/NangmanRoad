@@ -64,7 +64,7 @@ describe("telling a target that ignored ICMP from everything else", () => {
 describe("measuring again over TCP unasked, or asking first", () => {
   it("measures again unasked while the allowance lasts", () => {
     expect(tcpRetry(trace(14), "mtr", false, "icmp", false)).toBe("auto");
-    expect(tcpRetry(trace(14), "mtr", false, "icmp", undefined)).toBe("auto");
+    expect(tcpRetry(trace(14), "mtr", false, "icmp")).toBe("auto");
   });
 
   it("asks first once the allowance is nearly spent", () => {

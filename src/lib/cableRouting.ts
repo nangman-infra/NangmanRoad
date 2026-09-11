@@ -377,6 +377,8 @@ const LANDING_MATCH_KM = 30;
 // every hop, Beverwijk drew Paris 436 km to Atlantic Crossing-1, and a Paris-Tallinn leg
 // that had gone overland turned into a cable chain.
 const AT_STATION_KM = 50;
+// The grid cell a point falls in and the eight around it.
+const NEIGHBOUR_CELLS = [-1, 0, 1].flatMap((dLat) => [-1, 0, 1].map((dLng) => [dLat, dLng] as const));
 const LANDING_CANDIDATES = 16;
 // A branch whose end lies this close to another line of the same cable meets it there; the
 // source data does not always put the branching unit exactly on the trunk.
@@ -686,38 +688,38 @@ export class CableGraph {
     const cells = new Map<string, number[]>();
 
     for (const id of through.keys()) {
-      if (this.nodes[id].end) continue;
-      const key = gridKey(this.nodes[id], 1);
-      cells.set(key, [...(cells.get(key) ?? []), id]);
+      if (!this.nodes[id].end) {
+        const key = gridKey(this.nodes[id], 1);
+        cells.set(key, [...(cells.get(key) ?? []), id]);
+      }
     }
 
     for (const [name, lat, lng] of landings) {
-      const best = new Map<string, { id: number; km: number }>();
+      // Interior vertices within reach, nearest first: the first one each listing cable passes
+      // through is where that cable lands at this station.
+      const near = NEIGHBOUR_CELLS.flatMap(([dLat, dLng]) => cells.get(`${Math.floor(lat) + dLat},${Math.floor(lng) + dLng}`) ?? [])
+        .map((id) => ({ id, km: haversineKm([lat, lng], [this.nodes[id].lat, this.nodes[id].lng]) }))
+        .filter((entry) => entry.km <= LANDING_MATCH_KM)
+        .sort((a, b) => a.km - b.km);
+      const claimed = new Set<string>();
 
-      for (let dLat = -1; dLat <= 1; dLat += 1) {
-        for (let dLng = -1; dLng <= 1; dLng += 1) {
-          for (const id of cells.get(`${Math.floor(lat) + dLat},${Math.floor(lng) + dLng}`) ?? []) {
-            const km = haversineKm([lat, lng], [this.nodes[id].lat, this.nodes[id].lng]);
+      for (const { id, km } of near) {
+        const cables = [...(through.get(id) ?? [])].filter((cable) => !claimed.has(cable) && listed.get(cable)?.has(name));
 
-            if (km > LANDING_MATCH_KM) continue;
-
-            for (const cable of through.get(id) ?? []) {
-              if (listed.get(cable)?.has(name) && km < (best.get(cable)?.km ?? Number.POSITIVE_INFINITY)) best.set(cable, { id, km });
-            }
-          }
-        }
+        cables.forEach((cable) => claimed.add(cable));
+        if (cables.length > 0) this.markListed(id, name, km);
       }
+    }
+  }
 
-      for (const { id, km } of best.values()) {
-        const node = this.nodes[id];
+  private markListed(id: number, name: string, km: number) {
+    const node = this.nodes[id];
 
-        node.listed = true;
+    node.listed = true;
 
-        if (km < (node.nameKm ?? Number.POSITIVE_INFINITY)) {
-          node.name = name;
-          node.nameKm = km;
-        }
-      }
+    if (km < (node.nameKm ?? Number.POSITIVE_INFINITY)) {
+      node.name = name;
+      node.nameKm = km;
     }
   }
 
