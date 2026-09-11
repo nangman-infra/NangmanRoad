@@ -11,8 +11,9 @@
 export type LatLng = [number, number];
 
 interface CableFeature {
-  // Owners as the cable map lists them, comma-separated.
-  properties?: { name?: string; owners?: string };
+  // Owners as the cable map lists them, comma-separated, and the stations the map lists
+  // the cable as landing at, by name.
+  properties?: { name?: string; owners?: string; landings?: string[] };
   geometry: { coordinates: number[][][] };
 }
 
@@ -354,6 +355,10 @@ interface Node {
   // The official landing station this end is, when one lies within LANDING_MATCH_KM.
   name?: string;
   nameKm?: number;
+  // A station the cable lists as one of its landings, sitting on the line's interior: the
+  // line is drawn on through it to the next station (Tata TGN-Pacific passes Toyohashi on
+  // its way to Emi), and a hop standing at it may board or leave the cable there.
+  listed?: boolean;
   edges: Array<{ to: number; km: number; sea: boolean; cable?: string }>;
 }
 
@@ -366,6 +371,12 @@ const SNAP_DEGREES = 0.04;
 const LANDING_RADIUS_KM = 900;
 // An official landing point this close to a line's end names that end.
 const LANDING_MATCH_KM = 30;
+// A hop this close to a station its cable lists but only passes through stands at that
+// station, and boards there (Tata's Toyohashi routers, 0 km from Tata TGN-Pacific's
+// Toyohashi station). Any farther and the station is just a point on the line: opened to
+// every hop, Beverwijk drew Paris 436 km to Atlantic Crossing-1, and a Paris-Tallinn leg
+// that had gone overland turned into a cable chain.
+const AT_STATION_KM = 50;
 const LANDING_CANDIDATES = 16;
 // A branch whose end lies this close to another line of the same cable meets it there; the
 // source data does not always put the branching unit exactly on the trunk.
@@ -547,10 +558,17 @@ export class CableGraph {
   constructor(collection: { features: CableFeature[] }, mask?: LandMask, landings?: Landing[], land?: OverlandRouter) {
     this.mask = mask;
     this.land = land;
+    // Which cables run through each interior vertex, and which stations each cable lists.
+    const through = new Map<number, Set<string>>();
+    const listed = new Map<string, Set<string>>();
+
     for (const feature of collection.features) {
       const ends: Array<{ id: number; line: number }> = [];
       const cells = new Map<string, Array<{ id: number; line: number }>>();
       const lines: Array<Array<{ id: number }>> = [];
+      const cable = feature.properties?.name;
+
+      if (cable && feature.properties?.landings) listed.set(cable, new Set(feature.properties.landings));
 
       feature.geometry.coordinates.forEach((line, lineIndex) => {
         let previous: number | undefined;
@@ -564,6 +582,7 @@ export class CableGraph {
           const entry = { id, line: lineIndex };
 
           if (end) ends.push(entry);
+          else if (cable) through.set(id, (through.get(id) ?? new Set<string>()).add(cable));
           cells.set(gridKey(this.nodes[id], JOIN_CELL), [...(cells.get(gridKey(this.nodes[id], JOIN_CELL)) ?? []), entry]);
 
           if (previous !== undefined && previous !== id) {
@@ -592,18 +611,21 @@ export class CableGraph {
     }
 
     this.nameLandings(landings ?? []);
+    this.nameListedStations(landings ?? [], through, listed);
 
     // A line's end is a station when an official landing point sits on it, or, failing
     // that, unless the same point is inside another line: then it is either a branching
     // unit at sea or a station a cable is drawn straight through (Busan sits inside a
-    // Japan-China line), and the shore tells the two apart.
+    // Japan-China line), and the shore tells the two apart. A listed station on a line's
+    // interior is not a station for the search at large, only a way on or off its cable for
+    // a hop standing at it, but it needs its place for that.
     const byName = this.countryByName();
 
     this.nodes.forEach((node, id) => {
-      const place = node.end && mask ? mask.placeAt([node.lat, node.lng]) : undefined;
+      const place = (node.end || node.listed) && mask ? mask.placeAt([node.lat, node.lng]) : undefined;
       node.landing = node.end && (node.name !== undefined || !node.interior || place !== undefined);
 
-      if (node.landing) {
+      if (node.landing || node.listed) {
         const country = byName.get(id);
         this.places.set(id, place && country && country !== place.country ? { ...place, country } : place);
       }
@@ -651,6 +673,50 @@ export class CableGraph {
       if (best && best.km < (this.nodes[best.id].nameKm ?? Number.POSITIVE_INFINITY)) {
         this.nodes[best.id].name = name;
         this.nodes[best.id].nameKm = best.km;
+      }
+    }
+  }
+
+  // Stations a cable lists as its landings but whose line only passes through them: the
+  // nearest interior vertex of that cable within LANDING_MATCH_KM becomes a boarding point,
+  // for a hop standing at it, named after the station. Only the cable's own list makes a passing line a landing; a
+  // line drawn through another cable's station (Busan inside a Japan-China line) does not
+  // land there, and that vertex stays a plain vertex.
+  private nameListedStations(landings: Landing[], through: Map<number, Set<string>>, listed: Map<string, Set<string>>) {
+    const cells = new Map<string, number[]>();
+
+    for (const id of through.keys()) {
+      if (this.nodes[id].end) continue;
+      const key = gridKey(this.nodes[id], 1);
+      cells.set(key, [...(cells.get(key) ?? []), id]);
+    }
+
+    for (const [name, lat, lng] of landings) {
+      const best = new Map<string, { id: number; km: number }>();
+
+      for (let dLat = -1; dLat <= 1; dLat += 1) {
+        for (let dLng = -1; dLng <= 1; dLng += 1) {
+          for (const id of cells.get(`${Math.floor(lat) + dLat},${Math.floor(lng) + dLng}`) ?? []) {
+            const km = haversineKm([lat, lng], [this.nodes[id].lat, this.nodes[id].lng]);
+
+            if (km > LANDING_MATCH_KM) continue;
+
+            for (const cable of through.get(id) ?? []) {
+              if (listed.get(cable)?.has(name) && km < (best.get(cable)?.km ?? Number.POSITIVE_INFINITY)) best.set(cable, { id, km });
+            }
+          }
+        }
+      }
+
+      for (const { id, km } of best.values()) {
+        const node = this.nodes[id];
+
+        node.listed = true;
+
+        if (km < (node.nameKm ?? Number.POSITIVE_INFINITY)) {
+          node.name = name;
+          node.nameKm = km;
+        }
       }
     }
   }
@@ -850,7 +916,7 @@ export class CableGraph {
   private attachmentCost(point: LatLng, place: Place | undefined, id: number) {
     const node = this.nodes[id];
 
-    if (!node.landing) {
+    if (!node.landing && !(node.listed && haversineKm(point, [node.lat, node.lng]) <= AT_STATION_KM)) {
       return undefined;
     }
 

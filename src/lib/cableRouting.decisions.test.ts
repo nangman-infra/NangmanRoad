@@ -19,6 +19,7 @@ const city: Record<string, LatLng> = {
   Beijing: [39.9042, 116.4074],
   Shanghai: [31.23, 121.47],
   Tokyo: [35.6762, 139.6503],
+  Toyohashi: [34.7692, 137.3915],
   Osaka: [34.6937, 135.5023],
   Fukuoka: [33.5902, 130.4017],
   Taipei: [25.03, 121.56],
@@ -92,6 +93,19 @@ const expectations: Array<[keyof typeof city, keyof typeof city, "land" | "cable
 ];
 
 describe("leg decisions over the world's city pairs", () => {
+  // A cable's line is drawn straight on through some of its own stations - Tata TGN-Pacific
+  // passes Toyohashi on its way to Emi - and the cable's own list says it lands there. A
+  // hop in Toyohashi boards it in Toyohashi, not after a walk to the line's end.
+  it("boards a cable at a listed station its line only passes through", () => {
+    const decision = graph.decide(city.Toyohashi, city.LosAngeles, { operators: ["Tata Communications"] });
+
+    expect(decision.kind).toBe("cable");
+    if (decision.kind !== "cable") return;
+
+    expect(decision.cables).toContain("Tata TGN-Pacific");
+    expect(decision.segments.find((segment) => segment.sea)?.from).toBe("Toyohashi, Japan");
+  });
+
   it.each(expectations)("%s to %s goes by %s", (from, to, kind) => {
     expect(graph.decide(city[from], city[to]).kind).toBe(kind);
   });

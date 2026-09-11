@@ -90,7 +90,7 @@ async function refreshCables() {
   const TG = "https://www.submarinecablemap.com/api/v3";
   type Feature = { properties: { id: string; name: string; color: string }; geometry: { coordinates: number[][][] } };
   type Landing = { properties: { id: string; name: string; is_tbd: boolean | null }; geometry: { coordinates: [number, number] } };
-  type Detail = { name?: string; owners?: string; rfs_year?: number | null; is_planned?: boolean | null };
+  type Detail = { name?: string; owners?: string; rfs_year?: number | null; is_planned?: boolean | null; landing_points?: Array<{ name?: string }> };
 
   const geo = await fetchJson<{ features: Feature[] }>(`${TG}/cable/cable-geo.json`, "cable-geo.json");
   const landingPoints = await fetchJson<{ features: Landing[] }>(`${TG}/landing-point/landing-point-geo.json`, "landing-point-geo.json");
@@ -113,12 +113,18 @@ async function refreshCables() {
   const thisYear = new Date().getFullYear();
   const planned = new Set<string>();
   const owners = new Map<string, string>();
+  // The stations each cable lands at, by name. A line is drawn straight through some of
+  // its own stations (Tata TGN-Pacific passes Toyohashi on its way to Emi), and only this
+  // list says the cable actually lands there rather than merely passing.
+  const stations = new Map<string, string[]>();
 
   for (const [id, detail] of details) {
     const name = detail.name ?? geo.features.find((feature) => feature.properties.id === id)?.properties.name ?? id;
 
     if (detail.is_planned || (typeof detail.rfs_year === "number" && detail.rfs_year > thisYear)) planned.add(name);
     if (detail.owners) owners.set(name, detail.owners);
+    const listed = (detail.landing_points ?? []).map((point) => point.name).filter((point): point is string => Boolean(point));
+    if (listed.length > 0) stations.set(name, listed);
   }
 
   // Coordinates to 0.01°, and a vertex closer than 0.15° to the last one kept is dropped,
@@ -151,7 +157,8 @@ async function refreshCables() {
         properties: {
           name: feature.properties.name,
           color: feature.properties.color,
-          ...(owners.has(feature.properties.name) ? { owners: owners.get(feature.properties.name) } : {})
+          ...(owners.has(feature.properties.name) ? { owners: owners.get(feature.properties.name) } : {}),
+          ...(stations.has(feature.properties.name) ? { landings: stations.get(feature.properties.name) } : {})
         },
         geometry: { type: "MultiLineString", coordinates: feature.geometry.coordinates.map(simplify) }
       }))
