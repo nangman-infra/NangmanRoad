@@ -412,6 +412,38 @@ describe("runGlobalpingMeasurement", () => {
     });
   });
 
+  it("asks for a TCP traceroute on port 443, and nothing else, when the visitor chose TCP", async () => {
+    vi.useFakeTimers();
+    process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "tcp-1" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: "finished",
+        results: [
+          {
+            probe: { id: "probe-seoul", city: "Seoul", country: "KR", asn: 12345, latitude: 37.57, longitude: 126.98 },
+            hops: [{ resolvedAddress: "1.1.1.1", resolvedHostname: "one.one.one.one", stats: { avg: 13.4, loss: 0, sent: 16 } }]
+          }
+        ]
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const events = runGlobalpingMeasurement({ id: "measurement-tcp", mode: "traceroute", target: "1.1.1.1", protocol: "tcp" });
+
+    await events.next();
+    const hopEvent = events.next();
+    await vi.advanceTimersByTimeAsync(1_250);
+    await hopEvent;
+    await expect(events.next()).resolves.toMatchObject({ value: { type: "measurement_finished" } });
+
+    const createBodies = fetchMock.mock.calls
+      .filter(([, init]) => init && typeof init === "object" && "body" in init)
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+
+    expect(createBodies.map((body) => body.measurementOptions)).toEqual([{ protocol: "TCP", port: 443 }]);
+  });
+
   it("retries MTR with TCP when ICMP is rejected by the provider", async () => {
     vi.useFakeTimers();
     process.env.GLOBALPING_API_URL = "https://globalping.example.test/v1/measurements";
@@ -509,6 +541,8 @@ describe("runGlobalpingMeasurement", () => {
       .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
 
     expect(createBodies.map((body) => body.measurementOptions.protocol)).toEqual(["ICMP", "TCP"]);
+    // The provider-side fallback keeps Globalping's default port; only a visitor's TCP names 443.
+    expect(createBodies[1].measurementOptions.port).toBeUndefined();
   });
 
   it("throws a sanitized provider error when a traceroute measurement fails", async () => {

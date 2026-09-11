@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeMode, normalizeTarget } from "./validation";
+import { normalizeMode, normalizeProtocol, normalizeTarget } from "./validation";
 
 describe("normalizeTarget", () => {
   it("accepts public domains and IP addresses", () => {
@@ -31,5 +31,18 @@ describe("normalizeMode", () => {
 
   it("rejects unsupported modes", () => {
     expect(() => normalizeMode("ping")).toThrow("traceroute or mtr");
+  });
+});
+
+describe("normalizeProtocol", () => {
+  it("reads icmp and tcp, and takes an omitted protocol as icmp", () => {
+    expect(normalizeProtocol("tcp")).toBe("tcp");
+    expect(normalizeProtocol("icmp")).toBe("icmp");
+    expect(normalizeProtocol(undefined)).toBe("icmp");
+    expect(normalizeProtocol("")).toBe("icmp");
+  });
+
+  it("refuses anything else", () => {
+    expect(() => normalizeProtocol("udp")).toThrow("Protocol must be icmp or tcp.");
   });
 });

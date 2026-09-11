@@ -1,6 +1,6 @@
 import net from "node:net";
 import { findProbeLocation } from "../shared/probes";
-import type { TraceMode } from "../shared/types";
+import type { TraceMode, TraceProtocol } from "../shared/types";
 import {
   isAsciiAlpha,
   isAsciiAlphaNumeric,
@@ -171,6 +171,18 @@ export function normalizeTarget(input: unknown): string {
 export function normalizeProbeId(input: unknown): string | undefined {
   // Allow-list lookup, so nothing a caller invents ever reaches the measurement provider.
   return findProbeLocation(input)?.id;
+}
+
+export function normalizeProtocol(input: unknown): TraceProtocol {
+  if (input === undefined || input === null || input === "" || input === "icmp") {
+    return "icmp";
+  }
+
+  if (input === "tcp") {
+    return "tcp";
+  }
+
+  throw new Error("Protocol must be icmp or tcp.");
 }
 
 export function normalizeMode(input: unknown): TraceMode {

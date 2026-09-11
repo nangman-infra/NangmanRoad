@@ -2,7 +2,7 @@ import type {
   HopResult,
   MeasurementEvent,
   MeasurementResult,
-  TraceMode,
+  TraceMode, TraceProtocol,
   VisitorContext
 } from "../../shared/types";
 import { PROBE_LOCATIONS, findProbeLocation } from "../../shared/probes";
@@ -96,8 +96,13 @@ interface GlobalpingMeasurementParams {
   target: string;
   mode: TraceMode;
   from?: string;
+  protocol?: TraceProtocol;
   visitor?: VisitorContext;
 }
+
+// The port a TCP probe knocks on: HTTPS, which every target this map is asked about
+// listens on, so the target itself answers where its network drops ICMP.
+const TCP_PROBE_PORT = 443;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -806,17 +811,30 @@ function extractSource(payload: unknown) {
   };
 }
 
-function protocolsForMode(mode: TraceMode): readonly GlobalpingProtocol[] {
+// The protocols to try, in order. A visitor who asked for TCP gets TCP and nothing else;
+// otherwise ICMP, with TCP behind it for mtr only, where the provider is known to refuse
+// ICMP for some targets.
+function protocolsForMode(mode: TraceMode, requested?: TraceProtocol): readonly GlobalpingProtocol[] {
+  if (requested === "tcp") {
+    return ["TCP"];
+  }
+
   return mode === "mtr" ? GLOBALPING_MTR_PROTOCOLS : ["ICMP"];
 }
 
-function measurementOptions(mode: TraceMode, protocol: GlobalpingProtocol) {
+// The port goes only with a TCP run the visitor asked for. The provider-side retry that
+// falls back to TCP when Globalping refuses ICMP for an mtr keeps the provider's default
+// port, exactly as it did before the visitor could choose TCP.
+function measurementOptions(mode: TraceMode, protocol: GlobalpingProtocol, requested?: TraceProtocol) {
+  const port = protocol === "TCP" && requested === "tcp" ? { port: TCP_PROBE_PORT } : {};
+
   if (mode !== "mtr") {
-    return { protocol: "ICMP" };
+    return { protocol, ...port };
   }
 
   return {
     protocol,
+    ...port,
     packets: GLOBALPING_MAX_MTR_PACKETS
   };
 }
@@ -837,7 +855,7 @@ async function createProviderMeasurement(params: {
       target: params.measurement.target,
       locations: requestLocations(params.measurement),
       limit: PROBE_CANDIDATES,
-      measurementOptions: measurementOptions(params.measurement.mode, params.protocol)
+      measurementOptions: measurementOptions(params.measurement.mode, params.protocol, params.measurement.protocol)
     })
   });
 
@@ -1017,7 +1035,7 @@ export async function* runGlobalpingMeasurement(params: GlobalpingMeasurementPar
     const deadline = Date.now() + PROVIDER_TIMEOUT_MS;
     let emittedHopCount = 0;
     let streamedIndex: number | undefined;
-    const protocols = protocolsForMode(params.mode);
+    const protocols = protocolsForMode(params.mode, params.protocol);
     let protocolIndex = 0;
     let providerId = await createProviderMeasurement({
       apiUrl,

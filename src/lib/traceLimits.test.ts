@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HOP_LIMIT, ranOutOfHops } from "./traceLimits";
+import { HOP_LIMIT, ranOutOfHops, targetIgnoredIcmp } from "./traceLimits";
 import type { HopResult } from "../../shared/types";
 
 const answered = (hopNumber: number): HopResult => ({ hopNumber, ip: `10.0.0.${hopNumber}`, status: "ok" });
@@ -39,5 +39,24 @@ describe("telling a trace that ran out of hops from one whose target kept quiet"
 
   it("keeps mtr's allowance the deeper of the two, or there would be nothing to offer", () => {
     expect(HOP_LIMIT.mtr).toBeGreaterThan(HOP_LIMIT.traceroute);
+  });
+});
+
+// The offer to knock on TCP 443 instead is for a target that ignored ICMP, not for a trace
+// that ran out of road, and not for a TCP run that already failed.
+describe("telling a target that ignored ICMP from everything else", () => {
+  it("says yes when hops answered, the target did not, and hops were left", () => {
+    expect(targetIgnoredIcmp(trace(14), "mtr", false, "icmp")).toBe(true);
+  });
+
+  it("leaves a trace that ran out of hops to the deeper-mode offer", () => {
+    expect(targetIgnoredIcmp(trace(HOP_LIMIT.traceroute), "traceroute", false, "icmp")).toBe(false);
+  });
+
+  it("says no after a TCP run, once the target was reached, or before the answer is in", () => {
+    expect(targetIgnoredIcmp(trace(14), "mtr", false, "tcp")).toBe(false);
+    expect(targetIgnoredIcmp(trace(14), "mtr", true, "icmp")).toBe(false);
+    expect(targetIgnoredIcmp(trace(14), "mtr", undefined, "icmp")).toBe(false);
+    expect(targetIgnoredIcmp([], "mtr", false, "icmp")).toBe(false);
   });
 });

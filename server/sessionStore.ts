@@ -3,7 +3,7 @@ import type {
   MeasurementEvent,
   MeasurementResult,
   MeasurementStatus,
-  TraceMode,
+  TraceMode, TraceProtocol,
   VisitorContext
 } from "../shared/types";
 import { runDemoMeasurement } from "./providers/demoProvider";
@@ -16,6 +16,7 @@ interface Session {
   target: string;
   mode: TraceMode;
   from?: string;
+  protocol?: TraceProtocol;
   status: MeasurementStatus;
   createdAt: number;
   events: MeasurementEvent[];
@@ -142,6 +143,7 @@ async function runMeasurement(session: Session, visitor?: VisitorContext) {
       target: session.target,
       mode: session.mode,
       from: session.from,
+      protocol: session.protocol,
       visitor
     })) {
       publish(session, event);
@@ -160,6 +162,7 @@ export function createSession(params: {
   target: string;
   mode: TraceMode;
   from?: string;
+  protocol?: TraceProtocol;
   visitor?: VisitorContext;
 }) {
   cleanupExpiredSessions();
@@ -170,6 +173,7 @@ export function createSession(params: {
     target: params.target,
     mode: params.mode,
     from: params.from,
+    protocol: params.protocol,
     status: "starting",
     createdAt: Date.now(),
     events: [],

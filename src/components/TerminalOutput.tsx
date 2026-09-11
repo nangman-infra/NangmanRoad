@@ -5,7 +5,8 @@ import type {
   HopResult,
   MeasurementResult,
   MeasurementStatus,
-  TraceMode
+  TraceMode,
+  TraceProtocol
 } from "../../shared/types";
 
 const MTR_REPORT_CYCLES = 16;
@@ -14,6 +15,7 @@ type TerminalOutputProps = Readonly<{
   error?: string;
   hops: HopResult[];
   mode: TraceMode;
+  protocol: TraceProtocol;
   result?: MeasurementResult;
   status: MeasurementStatus;
   target: string;
@@ -84,11 +86,17 @@ function providerName(result?: MeasurementResult) {
   return "Measurement provider";
 }
 
-function commandForMode(mode: TraceMode, target: string) {
-  return mode === "mtr" ? `mtr -rwc ${MTR_REPORT_CYCLES} -z ${target}` : `traceroute ${target}`;
+// The command as it would be typed, TCP flags included: mtr's --tcp takes -P for the port,
+// traceroute's -T takes -p.
+function commandForMode(mode: TraceMode, target: string, protocol: TraceProtocol) {
+  if (mode === "mtr") {
+    return `mtr -rwc ${MTR_REPORT_CYCLES} -z${protocol === "tcp" ? " -T -P 443" : ""} ${target}`;
+  }
+
+  return `traceroute${protocol === "tcp" ? " -T -p 443" : ""} ${target}`;
 }
 
-function commandLines(params: { mode: TraceMode; result?: MeasurementResult; target: string }) {
+function commandLines(params: { mode: TraceMode; protocol: TraceProtocol; result?: MeasurementResult; target: string }) {
   const provider = providerName(params.result);
   const globalpingMtr = params.mode === "mtr" && params.result?.source.provider === "globalping";
   const providerLine = globalpingMtr ? `${provider} - API packet cap 16` : provider;
@@ -101,7 +109,7 @@ function commandLines(params: { mode: TraceMode; result?: MeasurementResult; tar
   }
 
   return [
-    `$ ${commandForMode(params.mode, params.target)}`,
+    `$ ${commandForMode(params.mode, params.target, params.protocol)}`,
     `provider  ${providerLine}`,
     "notice  Not a direct trace from your device",
     "notice  Exact device-level traceroute requires a local agent",
@@ -183,9 +191,9 @@ function TracerouteOutput(params: Readonly<{ commandLines: string[]; resultLines
   );
 }
 
-export function TerminalOutput({ error, hops, mode, result, status, target }: TerminalOutputProps) {
+export function TerminalOutput({ error, hops, mode, protocol, result, status, target }: TerminalOutputProps) {
   const shouldRenderResultOutput = status === "finished" && hops.length > 0;
-  const lines = commandLines({ mode, result, target });
+  const lines = commandLines({ mode, protocol, result, target });
   const mtrResultContent = shouldRenderResultOutput
     ? <MtrTable hops={hops} />
     : <div className="terminal-empty-line">{emptyOutputLine(error)}</div>;

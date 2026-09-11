@@ -5,7 +5,8 @@ import type {
   MeasurementEvent,
   MeasurementResult,
   MeasurementStatus,
-  TraceMode
+  TraceMode,
+  TraceProtocol
 } from "../shared/types";
 import { PROBE_LOCATIONS, countryFlag } from "../shared/probes";
 import { createMeasurement, openMeasurementEvents } from "./api";
@@ -13,7 +14,7 @@ import { AppShell, type JourneyState, type ThemeMode } from "./components/AppShe
 import { RouteVisualization, prepareRouteLegs } from "./components/RouteVisualization";
 import { warmRouter } from "./lib/routeClient";
 import { asksForBudget, fetchBudget, type BudgetReport } from "./lib/budgetReport";
-import { HOP_LIMIT, ranOutOfHops } from "./lib/traceLimits";
+import { HOP_LIMIT, ranOutOfHops, targetIgnoredIcmp } from "./lib/traceLimits";
 import { TerminalOutput } from "./components/TerminalOutput";
 import { LANG_STORAGE_KEY, LangContext, detectLang, setCurrentLang, t, type Lang } from "./lib/i18n";
 
@@ -130,6 +131,7 @@ function journeyStateFor(params: {
 export function App() {
   const [target, setTarget] = useState(initialTarget);
   const [mode, setMode] = useState<TraceMode>("traceroute");
+  const [protocol, setProtocol] = useState<TraceProtocol>("icmp");
   const [probe, setProbe] = useState("auto");
   const [status, setStatus] = useState<MeasurementStatus>("idle");
   const [result, setResult] = useState<MeasurementResult | undefined>();
@@ -141,6 +143,7 @@ export function App() {
   // Asked once per measurement: a visitor who waves it away gets the map, and the note's own
   // button is still there if they change their mind.
   const [hopLimitAsked, setHopLimitAsked] = useState(false);
+  const [tcpAsked, setTcpAsked] = useState(false);
   const [budget, setBudget] = useState<BudgetReport | "unavailable" | undefined>();
   // The globe is built at page load and the result waits for it: a longer wait on the
   // probe screen, never a stutter when the map appears. A globe that cannot be built
@@ -264,7 +267,7 @@ export function App() {
   // A probe named here re-measures the same target from it, as the result's own control does;
   // a mode named here does the same in the other mode, which is how a traceroute that ran out
   // of hops is followed up with an mtr without the visitor retyping the target.
-  async function start(from?: string, useMode?: TraceMode) {
+  async function start(from?: string, useMode?: TraceMode, useProtocol?: TraceProtocol) {
     if (!target.trim()) {
       setError(t("search.empty"));
       return;
@@ -279,6 +282,9 @@ export function App() {
 
     const origin = from ?? probe;
     const traceMode = useMode ?? mode;
+    // A fresh search starts over ICMP; a re-run from another probe or in the deeper mode
+    // keeps whatever the visitor last chose, and the TCP offer sets it explicitly.
+    const traceProtocol = useProtocol ?? (from || useMode ? protocol : "icmp");
 
     if (from) {
       setProbe(from);
@@ -287,6 +293,8 @@ export function App() {
     if (useMode) {
       setMode(useMode);
     }
+
+    setProtocol(traceProtocol);
 
     closeEventsRef.current?.();
 
@@ -304,12 +312,14 @@ export function App() {
     setHops([]);
     setResult(undefined);
     setHopLimitAsked(false);
+    setTcpAsked(false);
 
     try {
       const measurement = await createMeasurement({
         target,
         mode: traceMode,
         from: origin === "auto" ? undefined : origin,
+        protocol: traceProtocol,
         visitor: {
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           locale: navigator.language
@@ -497,6 +507,34 @@ export function App() {
           </div>
         ) : null}
 
+        {status === "finished" && !tcpAsked && targetIgnoredIcmp(hops, mode, latestResult?.reachedTarget, protocol) ? (
+          <div className="hop-limit" role="dialog" aria-modal="true" aria-labelledby="unreached-title">
+            <div className="hop-limit__card">
+              <p className="hop-limit__title" id="unreached-title">
+                {t("unreached.title")}
+              </p>
+              <p className="hop-limit__line">{t("unreached.icmp", { n: hops.length, target })}</p>
+              <p className="hop-limit__line hop-limit__line--gap">{t("unreached.tcp")}</p>
+              <p className="hop-limit__line hop-limit__line--ask">{t("unreached.ask")}</p>
+              <div className="hop-limit__actions">
+                <button
+                  type="button"
+                  className="hop-limit__action hop-limit__action--go"
+                  onClick={() => {
+                    setTcpAsked(true);
+                    void start(undefined, undefined, "tcp");
+                  }}
+                >
+                  {t("unreached.confirm")}
+                </button>
+                <button type="button" className="hop-limit__action" onClick={() => setTcpAsked(true)}>
+                  {t("limit.dismiss")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="result-stage flex min-h-0 flex-1">
           {resultView === "map" ? (
             <RouteVisualization
@@ -515,6 +553,7 @@ export function App() {
               error={error}
               hops={hops}
               mode={mode}
+              protocol={protocol}
               result={latestResult}
               status={status}
               target={target}

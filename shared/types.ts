@@ -1,4 +1,8 @@
 export type TraceMode = "traceroute" | "mtr";
+// What the probes carry. ICMP is what traceroute and mtr send by default; TCP to port 443
+// is answered by the target's own listener where its network drops ICMP (most hosting
+// networks), so it is the way to reach a target the first run could not.
+export type TraceProtocol = "icmp" | "tcp";
 
 export type MeasurementStatus =
   | "idle"
@@ -124,6 +128,8 @@ export interface CreateMeasurementRequest {
   mode: TraceMode;
   /** Probe location id from PROBE_LOCATIONS. Omitted or unknown falls back to the visitor hint. */
   from?: string;
+  /** Omitted means ICMP. */
+  protocol?: TraceProtocol;
   visitor?: VisitorContext;
 }
 

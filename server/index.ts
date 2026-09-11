@@ -10,7 +10,7 @@ import { createSession, getSession, subscribe } from "./sessionStore";
 import { rateLimit } from "./rateLimit";
 import { applySecurityHeaders, corsOptions } from "./security";
 import { sendIndexHtml, sendRobotsTxt, sendSitemapXml } from "./seo";
-import { normalizeMode, normalizeProbeId, normalizeTarget } from "./validation";
+import { normalizeMode, normalizeProbeId, normalizeProtocol, normalizeTarget } from "./validation";
 import type { CreateMeasurementRequest, MeasurementEvent } from "../shared/types";
 
 // Same length or not, the comparison takes the same time, so a caller learns nothing from
@@ -71,6 +71,7 @@ app.post("/api/measurements", rateLimit, (req, res) => {
     const target = normalizeTarget(body.target);
     const mode = normalizeMode(body.mode);
     const from = normalizeProbeId(body.from);
+    const protocol = normalizeProtocol(body.protocol);
     const visitor =
       body.visitor && typeof body.visitor === "object"
         ? {
@@ -80,7 +81,7 @@ app.post("/api/measurements", rateLimit, (req, res) => {
           }
         : undefined;
 
-    const session = createSession({ target, mode, from, visitor });
+    const session = createSession({ target, mode, from, protocol, visitor });
     res.status(202).json(session);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid measurement request.";
