@@ -11,7 +11,10 @@ import { rateLimit } from "./rateLimit";
 import { applySecurityHeaders, corsOptions } from "./security";
 import { sendIndexHtml, sendRobotsTxt, sendSitemapXml } from "./seo";
 import { normalizeMode, normalizeProbeId, normalizeProtocol, normalizeTarget } from "./validation";
+import { widenConnectAttempts } from "./network";
 import type { CreateMeasurementRequest, MeasurementEvent } from "../shared/types";
+
+widenConnectAttempts();
 
 // Same length or not, the comparison takes the same time, so a caller learns nothing from
 // how long a wrong key took to reject.
