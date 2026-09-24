@@ -141,6 +141,46 @@ for (const id of placeIds) {
   }
 }
 
+// Ferry crossings Natural Earth draws as roads, left out last: a line across more open water
+// than a bridge spans, or a run of lines off the coastline that reaches out to sea, where no
+// land lies within OUT_AT_SEA_KM - the Baltic ferries from Rostock, Swinoujscie and Gdynia,
+// along which Helsinki's traffic to France was drawn overland across the sea. The coarse
+// coastline puts many a coastal road offshore too, but close in: Ciudad del Carmen's bridges.
+const OUT_AT_SEA_KM = 50;
+const outAtSea = ([lat, lng]: LatLng) => {
+  for (let km = 10; km <= OUT_AT_SEA_KM; km += 10) {
+    for (let bearing = 0; bearing < 16; bearing += 1) {
+      const angle = (bearing / 16) * 2 * Math.PI;
+      const point: LatLng = [lat + (km / 111) * Math.cos(angle), lng + (km / (111 * Math.cos((lat * Math.PI) / 180))) * Math.sin(angle)];
+      if (mask.onLand(point)) return false;
+    }
+  }
+  return true;
+};
+const offshore = nodes.map((point) => !mask.onLand(point));
+const run = nodes.map((_node, id) => id);
+const runOf = (id: number): number => {
+  if (run[id] !== id) run[id] = runOf(run[id]);
+  return run[id];
+};
+const pairs = [...edges.keys()].map((key) => key.split("-").map(Number) as [number, number]);
+const offshorePairs = pairs.filter(([a, b]) => offshore[a] && offshore[b]);
+for (const [a, b] of offshorePairs) run[runOf(a)] = runOf(b);
+const runsAtSea = new Set(offshorePairs.flat().filter((id) => outAtSea(nodes[id])).map(runOf));
+let ferries = 0;
+
+for (const [a, b] of pairs) {
+  const acrossWater = haversineKm(nodes[a], nodes[b]) > SEA_CROSSING_KM / 2 && mask.waterAlong(nodes[a], nodes[b]).longestKm >= SEA_CROSSING_KM;
+  const offshoreRun = offshore[a] && offshore[b] && runsAtSea.has(runOf(a));
+
+  if (acrossWater || offshoreRun) {
+    edges.delete(`${a}-${b}`);
+    ferries += 1;
+  }
+}
+
+console.log(`left out ${ferries} edges across open water`);
+
 // Flat, to keep the file small: latitude and longitude pairs, then node index pairs. The
 // lengths are recomputed on load.
 const edgeList = [...edges.keys()].flatMap((key) => key.split("-").map(Number));

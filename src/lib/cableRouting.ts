@@ -125,16 +125,18 @@ function sameOperator(a: string, b: string) {
 const OWNED_DISCOUNT = 0.7;
 
 interface CountryFeature {
-  properties: { continent?: string; iso?: string };
+  properties: { continent?: string; iso?: string; name?: string };
   geometry: { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][] };
 }
 
 // What a point stands on. Landmass is the connected piece of land (Afro-Eurasia, the
 // Americas, Honshu...): terrestrial fibre never leaves it, a cable is the only way off.
+// Island is that piece as the coastline draws it, before a fixed link joins it to another.
 export interface Place {
   continent: string;
   country: string;
   landmass: number;
+  island: number;
 }
 
 interface Ring {
@@ -148,15 +150,56 @@ const KM_PER_DEGREE = 111.2;
 // belongs to the nearest shore this close.
 const NEAR_SHORE_KM = 80;
 const NEAR_SHORE_DEGREES = 1;
+// Natural Earth codes a few territories on their own while the landing list files their
+// stations under the country that holds them ("Chai Wan, China"): a hop in Kowloon took Hong
+// Kong's stations for foreign ones, reached only Tseung Kwan O over land, and got there by
+// crossing the harbour on TKO Connect. On the coastline too they count as that country.
+const TERRITORY_OF = new Map([
+  ["HK", "CN"],
+  ["PR", "US"],
+  ["AX", "FI"]
+]);
+
+// Natural Earth gives France, Norway, Kosovo, Somaliland and a few others no two-letter code,
+// "-99" for each: as one country, Hargeisa to Paris was a domestic leg drawn overland and Paris
+// to Oslo never looked for a chain. Their names keep them apart.
+function countryCode(properties: CountryFeature["properties"]) {
+  return properties.iso === "-99" ? (properties.name ?? properties.iso) : (properties.iso ?? "");
+}
+// Bridges and tunnels the coastline knows nothing of. Each joins the pieces of land at its two
+// ends into one, and terrestrial fibre crosses where the road does: without them Copenhagen's
+// chains crossed the Belts on GlobalConnect's cables. A point at either end of each: the Great
+// Belt, the Little Belt, the Øresund and Falster's bridges; the Seto-Ohashi and the Seikan
+// Tunnel; the Confederation Bridge; the Menai Strait; the Öland Bridge. Not Kanmon: with Kyushu
+// joined to Honshu, chains from Shanghai and Beijing to Osaka came ashore at Kitakyushu by way
+// of Busan - the traces from both cities that show the way (September 2026) reach Japan through
+// Tokyo or Hong Kong - and Tokyo to Seoul found no chain at all. Not Long Island to the Bronx
+// either: New York's chains do cross the Sound on the Cross Sound Cable without it, but with it
+// Bilbao's chain to Washington left MAREA for Grace Hopper and a walk down from Long Island,
+// where Cogent's Bilbao router reaches Washington directly (September 2026).
+const FIXED_LINKS: Array<[LatLng, LatLng]> = [
+  [[55.64, 12.08], [55.4, 10.39]],
+  [[55.4, 10.39], [55.49, 9.47]],
+  [[55.68, 12.57], [55.6, 13]],
+  [[55.23, 11.76], [54.77, 11.87]],
+  [[34.66, 133.92], [34.34, 134.05]],
+  [[40.82, 140.74], [41.77, 140.73]],
+  [[46.24, -63.13], [46.09, -64.78]],
+  [[53.3, -4.35], [53.2, -4.1]],
+  [[56.88, 16.66], [56.66, 16.36]]
+];
 
 export class LandMask {
   private readonly rings: Ring[];
+  // The pairs of islands a fixed link joins.
+  private readonly links = new Set<string>();
 
   constructor(collection: { features: CountryFeature[] }) {
     const rings: Array<Omit<Ring, "place"> & { continent: string; country: string }> = [];
 
     for (const feature of collection.features) {
       const polygons = feature.geometry.type === "Polygon" ? [feature.geometry.coordinates as number[][][]] : (feature.geometry.coordinates as number[][][][]);
+      const iso = countryCode(feature.properties);
 
       for (const polygon of polygons) {
         // Outer ring only; lakes do not make a leg a sea crossing.
@@ -168,7 +211,7 @@ export class LandMask {
           ring,
           box: [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
           continent: feature.properties.continent ?? "",
-          country: feature.properties.iso ?? ""
+          country: TERRITORY_OF.get(iso) ?? iso
         });
       }
     }
@@ -196,7 +239,46 @@ export class LandMask {
       }
     });
 
-    this.rings = rings.map(({ ring, box, continent, country }, index) => ({ ring, box, place: { continent, country, landmass: find(index) } }));
+    this.rings = rings.map(({ ring, box, continent, country }, index) => ({ ring, box, place: { continent, country, landmass: find(index), island: find(index) } }));
+
+    for (const [a, b] of FIXED_LINKS) {
+      const [here, there] = [this.placeAt(a), this.placeAt(b)];
+      const one = here?.landmass;
+      const other = there?.landmass;
+
+      if (here && there) this.links.add(pairKey(String(here.island), String(there.island)));
+
+      for (const { place } of this.rings) {
+        if (one !== undefined && other !== undefined && place.landmass === other) place.landmass = one;
+      }
+    }
+  }
+
+  // How a drawn overland path meets the sea and the borders: the longest stretch of open water
+  // along it, carried from one stroke to the next, and how far it runs in each country.
+  alongPath(path: LatLng[]) {
+    const countryKm = new Map<string, number>();
+    let run = 0;
+    let longestKm = 0;
+
+    for (let index = 1; index < path.length; index += 1) {
+      const km = haversineKm(path[index - 1], path[index]);
+      const samples = Math.max(1, Math.ceil(km / 10));
+
+      for (const point of greatCircle(path[index - 1], path[index], samples).slice(1)) {
+        const place = this.inside(point)?.place;
+
+        if (place) countryKm.set(place.country, (countryKm.get(place.country) ?? 0) + km / samples);
+        run = place ? 0 : run + km / samples;
+        longestKm = Math.max(longestKm, run);
+      }
+    }
+
+    return { longestKm, countryKm };
+  }
+
+  linked(one: number, other: number) {
+    return this.links.has(pairKey(String(one), String(other)));
   }
 
   private inside([lat, lng]: LatLng) {
@@ -318,10 +400,21 @@ const OVERLAND_SHARE = 0.6;
 // between the Americas has neither road nor cable. A leg across one of these is a cable.
 const SEA_ONLY_COUNTRIES = new Set(["KR"]);
 const NO_LAND_BETWEEN = new Set(["North America|South America"]);
-// Borders with no telecom link across them: Israel's with Lebanon and with Syria, and
-// Taiwan's with China - Kinmen sits a few kilometres off Xiamen, but no traffic transits
-// that way. Natural Earth codes Taiwan CN-TW.
-const NO_FIBRE_BORDERS = new Set(["IL|LB", "IL|SY", "CN|CN-TW"]);
+// Borders with no telecom link across them: Israel's with Lebanon and with Syria, Taiwan's
+// with China - Kinmen sits a few kilometres off Xiamen, but no traffic transits that way -
+// the fence round the US naval base at Guantanamo Bay, and Guyana's with Venezuela, which no
+// road crosses either: Guyana's traffic leaves by its own cables, where chains to Georgetown
+// had walked in from Venezuela's festoon. Natural Earth codes Taiwan CN-TW.
+const NO_FIBRE_BORDERS = new Set(["IL|LB", "IL|SY", "CN|CN-TW", "CU|US", "GY|VE"]);
+// Stations on ground held by a country other than the one the landing list files them under.
+// Guantanamo Bay's cables, GTMO-1 and GTMO-PR, serve the naval base; filed under Cuba, they
+// carried Havana's chains to Florida and Puerto Rico, where Cuba's traffic leaves on ALBA-1
+// and ARIMAO.
+const HELD_STATIONS = new Map([["Guantanamo Bay, Cuba", "US"]]);
+
+function walkKey(a: number, b: number) {
+  return `walk:${Math.min(a, b)}-${Math.max(a, b)}`;
+}
 
 function noLandRoute(a: Place, b: Place) {
   if (a.country === b.country) return false;
@@ -404,6 +497,34 @@ const BRIDGE_KM = 250;
 // - at the old price a chain left EAC-C2C at Taipei and walked the length of Taiwan to
 // board it again, and left a cable on Malaysia's west coast to walk to Singapore.
 const BRIDGE_PENALTY = 3;
+// A cable's run between two of its stations across a strait a fixed link spans, shorter than
+// BRIDGE_KM, is no way through: the fibre crosses with the road. A chain took such a run to
+// stitch walks between stations into a way round the bridge - New York to Marseille on the Cross
+// Sound Cable, Miami to Malmö over the Great Belt and the Øresund on GlobalConnect's cables.
+// Stations this close to the two ends of a link are on its two shores, whichever shore the
+// coastline puts them on: it puts one of Klagshamn's on Zealand.
+const LINK_END_KM = 30;
+// A system at least this long reaches a piece of land from afar. An island where none lands
+// has only its own links - Guernsey's, Jersey's, Bornholm's and the Isle of Man's, none over
+// 550 km - and a chain passes through it only when a hop stands on it: London to Sao Paulo
+// crossed to France on Guernsey's cables, and Warsaw's chains to the west hopped Bornholm.
+// An island whose stations, and every station of every system landing there, are in one
+// country is part of that country's own network all the same: Marajó, on the Norte Conectado
+// river cables from Belém to Manaus.
+const LONG_HAUL_KM = 1_000;
+// Boarding or leaving a shorter system - a festoon, a strait's link, an island's own cable -
+// costs this much on top of the distance, except in a country the leg starts or ends in, whose
+// own links are its way in and out. Chains hopped such systems to shorten a walk: London's to
+// Ukraine crossed to Norway and rode five North Sea and Baltic systems to Lithuania, where a
+// Channel cable and the road is the way, and Asia's to Europe stitched the Maldives' own cables
+// in between two long-haul systems that both pass them by.
+const HANDOFF_KM = 200;
+// Where an intercontinental system this long lands, carriers hand traffic from one system to
+// another; where only regional systems do, a chain between two places both reached by such a
+// system rides through without changing system. Brasilia to New York hopped Martinique and
+// Saint Lucia on regional cables instead of taking GlobeNet by Bermuda. Where no chain keeps
+// to that - Paramaribo meets the rest of the Caribbean only in Trinidad - the hand-off is made.
+const INTERCONTINENTAL_KM = 5_000;
 // A cable's own line crosses land in places - Egypt between the Mediterranean and the Red
 // Sea, the Kra isthmus, a station some way inland - and there the packet is on terrestrial
 // fibre. Every sea run is cut wherever its line stays on land for longer than this, so the
@@ -418,6 +539,20 @@ const MIN_SEA_SHARE = 0.3;
 // (Cairo to Tel Aviv over Sinai and the Taba-Aqaba cable) is a walk with a detour, not a
 // cable route.
 const MAX_WALK_SHARE = 0.5;
+// Where only a cable can carry a leg, a chain walks at most the straight line; a leg no chain
+// was found for gets a last try walking this share of it: Havana's traffic leaves Cuba on ALBA-1
+// at Santiago de Cuba, the length of the island away, where production went through the fence of
+// the Guantanamo Bay naval base.
+const LAST_RESORT_WALK_SHARE = 1.5;
+// How many times a chain that walks where the land cannot carry it is searched again without
+// its walks. Where stations face each other across a strait on both sides - the Skagerrak, the
+// Aegean islands, the Bahamas - each search finds the next pair. On a leg only a cable can carry
+// the cheapest chain found is drawn when no search finds one that stays dry, so no such leg loses
+// its chain - or a later one that crosses less water and walks no farther: Doha to a Dammam
+// placed out in the Gulf walks 120 km of water off 2Africa, not 195 km from Al Khobar at the end
+// of FALCON. One that walks farther is no better: from Singapore a later chain landed at Jeddah
+// and walked 1,284 km across Arabia to cross 89 km of the Gulf rather than 195.
+const WET_WALK_RETRIES = 24;
 const MIN_CROSSING_COVER = 0.8;
 // Below this a leg is drawn straight: a bridge or a tunnel carries it, not a cable system.
 const MIN_SEA_LEG_KM = 150;
@@ -430,6 +565,26 @@ const LONG_LEG_KM = 2_500;
 // round India and through Suez, 2.4 times - so the limit sits above that.
 const MAX_DETOUR_RATIO = 2.8;
 const MAX_DETOUR_SLACK_KM = 500;
+// Where land could carry a leg at least this long, a chain has that cable detour limit rather
+// than the land's: from Copenhagen, Hong Kong is 10,300 km overland and 16,500 km round by
+// Suez, and the traffic goes by sea. Shorter, the land usually wins - Mexico City to New York
+// stays on land - and so it does within the Americas at any length, where a continent's own
+// backbone runs its length: Vancouver to Miami goes overland, not round by Panama. So it does
+// too for a leg to or from Russia that stays in Europe or Asia, on Russia's own backbone:
+// Vladivostok to Bern went round by Japan and Suez, Mumbai to Moscow by the Black Sea's
+// festoons. A Russian leg to Africa is not one of those - it goes to Europe by land and on by
+// cable.
+const LONG_LAND_LEG_KM = 4_000;
+const LAND_CONTINENTS = new Set(["North America", "South America"]);
+// A country no cable lands in, whose traffic crosses its land borders only: North Korea's goes to
+// China Unicom at Dandong and to TransTeleCom at Khasan. A long leg to or from it keeps the
+// land's budget: Mumbai to Pyongyang went round by Japan, Sakhalin and Vladivostok.
+const LAND_ONLY_COUNTRIES = new Set(["KP"]);
+// How far a European leg's overland way may run through Russia before it is a way through
+// Russia. The corridors from Poland to the Baltic states cut across Kaliningrad for up to 200 km;
+// Finland's way to the rest of Europe round by St Petersburg runs 450 km and more in Russia
+// (measured on the city pairs of the decisions tests, September 2026).
+const RUSSIA_TRANSIT_KM = 300;
 // A cable counts as ridden when the chain follows it this far, or this much of its sea run.
 const MIN_RIDDEN_KM = 150;
 const MIN_RIDDEN_SHARE = 0.05;
@@ -491,6 +646,16 @@ export function greatCircle(a: LatLng, b: LatLng, samples = 32): LatLng[] {
 
     return [(Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, (Math.atan2(y, x) * 180) / Math.PI];
   });
+}
+
+// One search of the graph (decide): strict or not as INTERCONTINENTAL_KM has it, with or without
+// the HANDOFF_KM surcharge, with the islands LONG_HAUL_KM closes open or not, and how far a chain
+// may walk on a leg only a cable can carry, as a share of the straight line.
+interface SearchPass {
+  strict: boolean;
+  surcharged: boolean;
+  open: boolean;
+  walkShare: number;
 }
 
 export class MinHeap {
@@ -556,6 +721,15 @@ export class CableGraph {
   private readonly cableEnds = new Map<string, number[]>();
   // Each cable system's number, for the search state: which node, on which system.
   private readonly cableIds = new Map<string, number>();
+  // Each cable system's length, all its lines together.
+  private readonly cableKm = new Map<string, number>();
+  // The pieces of land a long-haul system reaches, those an intercontinental one reaches, and
+  // those whose stations and systems all stay in one country (LONG_HAUL_KM, INTERCONTINENTAL_KM).
+  private readonly longHaul: Set<number>;
+  private readonly intercontinental: Set<number>;
+  private readonly domestic: Set<number>;
+  // The systems shorter than LONG_HAUL_KM, by search number (HANDOFF_KM).
+  private readonly shortSystems: Set<number>;
   // Each cable's owners, as operator keys, with the name the map gives them.
   private readonly owners = new Map<string, Array<{ key: string; name: string }>>();
 
@@ -565,6 +739,8 @@ export class CableGraph {
     // Which cables run through each interior vertex, and which stations each cable lists.
     const through = new Map<number, Set<string>>();
     const listed = new Map<string, Set<string>>();
+    // Every line of every cable, vertex by vertex.
+    const runs: Array<{ cable: string; ids: number[] }> = [];
 
     for (const feature of collection.features) {
       const ends: Array<{ id: number; line: number }> = [];
@@ -573,6 +749,7 @@ export class CableGraph {
       const cable = feature.properties?.name;
 
       if (cable && feature.properties?.landings) listed.set(cable, new Set(feature.properties.landings));
+      if (cable) this.cableKm.set(cable, feature.geometry.coordinates.reduce((km, line) => km + pathKm(line.map(([lng, lat]): LatLng => [lat, lng])), this.cableKm.get(cable) ?? 0));
 
       feature.geometry.coordinates.forEach((line, lineIndex) => {
         let previous: number | undefined;
@@ -598,6 +775,7 @@ export class CableGraph {
         });
 
         lines.push(ids);
+        if (cable && ids.length > 1) runs.push({ cable, ids: ids.map((entry) => entry.id) });
       });
 
       this.joinBranches(ends, cells, lines, feature.properties?.name);
@@ -636,6 +814,7 @@ export class CableGraph {
     });
 
     this.bridgeLandings();
+    this.dropStraitRuns(runs);
 
     for (const [cable, ids] of this.cableEnds) {
       const countries = [...new Set(ids.flatMap((id) => (this.nodes[id].landing ? [this.places.get(id)?.country] : [])).filter((country): country is string => Boolean(country)))].sort(compareCode);
@@ -645,6 +824,98 @@ export class CableGraph {
         this.closed.set(cable, pair);
       }
     }
+
+    this.longHaul = this.landmassesReachedBy(LONG_HAUL_KM);
+    this.intercontinental = this.landmassesReachedBy(INTERCONTINENTAL_KM);
+    this.domestic = this.singleCountryLandmasses();
+    this.shortSystems = this.systemsShorterThan(LONG_HAUL_KM);
+  }
+
+  private systemsShorterThan(km: number) {
+    return new Set([...this.cableIds].filter(([cable]) => (this.cableKm.get(cable) ?? 0) < km).map(([, id]) => id));
+  }
+
+  // Cuts every run of a line between two consecutive stations that crosses a fixed link's strait
+  // (LINK_END_KM) out of the graph.
+  private dropStraitRuns(runs: Array<{ cable: string; ids: number[] }>) {
+    const at = (id: number): LatLng => [this.nodes[id].lat, this.nodes[id].lng];
+    const nearEnd = (id: number, end: LatLng) => haversineKm(at(id), end) <= LINK_END_KM;
+    const acrossLink = (from: number, to: number, start: Place, end: Place) =>
+      (start.island !== end.island && this.mask?.linked(start.island, end.island)) ||
+      FIXED_LINKS.some(([one, other]) => (nearEnd(from, one) && nearEnd(to, other)) || (nearEnd(from, other) && nearEnd(to, one)));
+
+    for (const { cable, ids } of runs) {
+      let from = 0;
+      let km = 0;
+
+      for (let index = 1; index < ids.length; index += 1) {
+        km += haversineKm(at(ids[index - 1]), at(ids[index]));
+        const end = this.places.get(ids[index]);
+
+        if (!end) continue;
+
+        const start = this.places.get(ids[from]);
+
+        if (start && km < BRIDGE_KM && acrossLink(ids[from], ids[index], start, end)) {
+          for (let step = from + 1; step <= index; step += 1) this.unlink(ids[step - 1], ids[step], cable);
+        }
+
+        from = index;
+        km = 0;
+      }
+    }
+  }
+
+  private unlink(a: number, b: number, cable: string) {
+    this.nodes[a].edges = this.nodes[a].edges.filter((edge) => !(edge.sea && edge.cable === cable && edge.to === b));
+    this.nodes[b].edges = this.nodes[b].edges.filter((edge) => !(edge.sea && edge.cable === cable && edge.to === a));
+  }
+
+  // The pieces of land where a system at least this long comes ashore.
+  private landmassesReachedBy(minKm: number) {
+    const reached = new Set<number>();
+
+    for (const [id, place] of this.places) {
+      if (place && this.nodes[id].edges.some((edge) => edge.sea && edge.cable !== undefined && (this.cableKm.get(edge.cable) ?? 0) >= minKm)) {
+        reached.add(place.landmass);
+      }
+    }
+
+    return reached;
+  }
+
+  // The pieces of land whose stations are all in one country, as are the stations of every
+  // system that lands on them.
+  private singleCountryLandmasses() {
+    const landmassCountries = new Map<number, Set<string>>();
+    const landmassCables = new Map<number, Set<string>>();
+    const cableCountries = new Map<string, Set<string>>();
+
+    for (const [id, place] of this.places) {
+      if (!place) continue;
+
+      landmassCountries.set(place.landmass, (landmassCountries.get(place.landmass) ?? new Set<string>()).add(place.country));
+
+      for (const { sea, cable } of this.nodes[id].edges) {
+        if (sea && cable) {
+          landmassCables.set(place.landmass, (landmassCables.get(place.landmass) ?? new Set<string>()).add(cable));
+          cableCountries.set(cable, (cableCountries.get(cable) ?? new Set<string>()).add(place.country));
+        }
+      }
+    }
+
+    const domestic = new Set<number>();
+
+    for (const [landmass, cables] of landmassCables) {
+      const [country = "", ...others] = landmassCountries.get(landmass) ?? [];
+      const inCountry = (cable: string) => cableCountries.get(cable)?.size === 1 && cableCountries.get(cable)?.has(country) === true;
+
+      if (others.length === 0 && [...cables].every(inCountry)) {
+        domestic.add(landmass);
+      }
+    }
+
+    return domestic;
   }
 
   // The official landing points, each matched to the nearest line end within reach: the
@@ -754,7 +1025,7 @@ export class CableGraph {
       codes.set(country, [...tally].sort((a, b) => b[1] - a[1])[0][0]);
     }
 
-    return new Map(named.map(({ id, country }) => [id, codes.get(country)]));
+    return new Map(named.map(({ id, country }) => [id, HELD_STATIONS.get(this.nodes[id].name ?? "") ?? codes.get(country)]));
   }
 
   // The cables any of these operators owns, with the owner's name as the map writes it.
@@ -918,8 +1189,15 @@ export class CableGraph {
   // What terrestrial fibre reaches from a hop: its own country's stations across the whole
   // piece of land (Los Angeles serves Miami), a neighbour's only nearby and over land
   // (Marseille serves Frankfurt; Shanghai does not serve Seoul across the Yellow Sea, nor
-  // Myanmar across China). Without the coastline, distance alone decides.
-  private attachmentCost(point: LatLng, place: Place | undefined, id: number) {
+  // Myanmar across China). Within Europe borders are no barrier to terrestrial fibre and a
+  // neighbour's stations serve as far as the land goes: Genoa serves Copenhagen, where Asia's
+  // chains to Scandinavia went round by Bude, the Netherlands and Denmark's island cables.
+  // Russia is not Europe here, though Natural Earth counts all of it as Europe, as far as the
+  // Pacific. That reach is for a leg that leaves Europe or crosses to one of its islands; between
+  // two places on the continent itself the land carries the leg, and a station a continent away
+  // is no way off it (europeReach): Seville to Rome went round by Morocco and Marseille, Warsaw
+  // to Tallinn on Kaliningrad's cables. Without the coastline, distance alone decides.
+  private attachmentCost(point: LatLng, place: Place | undefined, id: number, europeReach = true) {
     const node = this.nodes[id];
 
     if (!node.landing && !(node.listed && haversineKm(point, [node.lat, node.lng]) <= AT_STATION_KM)) {
@@ -939,7 +1217,9 @@ export class CableGraph {
         return undefined;
       }
 
-      if (station.country !== place.country && (km > LANDING_RADIUS_KM || noLandRoute(place, station) || !this.mask.overland(point, [node.lat, node.lng]))) {
+      const european = europeReach && place.continent === "Europe" && station.continent === "Europe" && place.country !== "RU" && station.country !== "RU";
+
+      if (station.country !== place.country && (noLandRoute(place, station) || (!european && km > LANDING_RADIUS_KM) || !this.mask.overland(point, [node.lat, node.lng]))) {
         return undefined;
       }
 
@@ -949,13 +1229,60 @@ export class CableGraph {
     return { km, cost: km * LAND_PENALTY };
   }
 
+  // The walks of a chain the land cannot carry: more open water on the straight line than a
+  // bridge spans, and no corridor round it for the overland drawing to follow. With them the
+  // most water one crosses, and whether the chain sailed past a station it could have walked
+  // off dry to go and walk across the sea further on: Cincinnati to Nassau called at Nassau and
+  // sailed on round Eleuthera, only for the sea it covered, then walked from Governors Harbour
+  // to Andros - where production, finding no chain, drew the straight line.
+  private wetWalks(from: LatLng, to: LatLng, toPlace: Place | undefined, ids: number[], sea: boolean[], europeReach: boolean) {
+    const mask = this.mask;
+
+    if (!mask || !this.land) {
+      return undefined;
+    }
+
+    const at = (id: number): LatLng => [this.nodes[id].lat, this.nodes[id].lng];
+    const water = (a: LatLng, b: LatLng) => {
+      const km = mask.waterAlong(a, b).longestKm;
+
+      return km >= SEA_CROSSING_KM && this.overland(a, b).length <= 2 ? km : 0;
+    };
+    const last = ids.length - 1;
+    // Each walk with where it ends in the chain: the start walk at 0, the exit past the end.
+    const walks = [
+      { key: `start:${ids[0]}`, at: 0, km: water(from, at(ids[0])) },
+      ...ids.slice(1).map((id, index) => ({ key: walkKey(ids[index], id), at: index + 1, km: sea[index + 1] ? 0 : water(at(ids[index]), at(id)) })),
+      { key: `exit:${ids[last]}`, at: last + 1, km: water(at(ids[last]), to) }
+    ].filter((walk) => walk.km > 0);
+
+    if (walks.length === 0) {
+      return undefined;
+    }
+
+    const lastWet = Math.max(...walks.map((walk) => walk.at));
+    const dryExit = (id: number) => this.attachmentCost(to, toPlace, id, europeReach) !== undefined && water(at(id), to) === 0;
+
+    const walked = haversineKm(from, at(ids[0])) + haversineKm(at(ids[last]), to) + ids.slice(1).reduce((sum, id, index) => sum + (sea[index + 1] ? 0 : haversineKm(at(ids[index]), at(id))), 0);
+
+    // Asked only of a chain that would be kept: each station's exit walk may need a land path.
+    return { keys: walks.map((walk) => walk.key), km: Math.max(...walks.map((walk) => walk.km)), walked, roundabout: () => ids.slice(0, Math.min(lastWet, last)).some(dryExit) };
+  }
+
+  // The piece of land a station stands on, unless one of the leg's hops stands on it too.
+  private transitLandmass(id: number, from: Place | undefined, to: Place | undefined) {
+    const landmass = this.places.get(id)?.landmass;
+
+    return landmass === from?.landmass || landmass === to?.landmass ? undefined : landmass;
+  }
+
   // Every landing station a hop can reach, dearest last. The whole reachable set goes into
   // the search: the right station for Seoul to Miami is Los Angeles, which no shortlist of
   // the stations nearest Miami would ever include.
-  private landingsNear(point: LatLng, place: Place | undefined) {
+  private landingsNear(point: LatLng, place: Place | undefined, europeReach = true) {
     return this.nodes
       .map((_node, id) => {
-        const reach = this.attachmentCost(point, place, id);
+        const reach = this.attachmentCost(point, place, id, europeReach);
 
         return { id, km: reach?.km ?? Number.POSITIVE_INFINITY, cost: reach?.cost ?? Number.POSITIVE_INFINITY };
       })
@@ -1100,14 +1427,36 @@ export class CableGraph {
       return { kind: "land", path: this.overland(from, to), evidence: [...why, { code: "short_bridge" }] };
     }
 
+    const landPath = landPossible ? this.overland(from, to) : [];
     const fallback: LegDecision = landPossible
-      ? { kind: "land", path: this.overland(from, to), evidence: [...why, { code: "no_chain_within", ratio: LAND_ALTERNATIVE_RATIO, rttMs: measured }, { code: "land_assumed" }] }
+      ? { kind: "land", path: landPath, evidence: [...why, { code: "no_chain_within", ratio: LAND_ALTERNATIVE_RATIO, rttMs: measured }, { code: "land_assumed" }] }
       : { kind: "unrouted", crossingKm: Math.round(water.longestKm), evidence: [...why, { code: "no_chain_found" }] };
     const owned = this.ownedCables(options.operators ?? []);
     // A cable between two countries whose border carries no transit is open to a leg
     // between those two countries and closed to every other.
     const legPair = fromPlace && toPlace ? pairKey(fromPlace.country, toPlace.country) : undefined;
-    const starts = this.landingsNear(from, fromPlace).slice(0, LANDING_CANDIDATES * 8);
+    const inEurope = (place: Place | undefined) => place?.continent === "Europe" && place.country !== "RU";
+    // The land carries a leg across a stretch of sea only where the land goes round it. A way that
+    // crosses more open water than a bridge spans cuts straight across - Dortmund to Algiers was
+    // drawn over the Mediterranean where production rode Blue and Med Cable - and within Europe
+    // one through Russia between two other countries (RUSSIA_TRANSIT_KM) is no way either:
+    // Helsinki to Marseille, which production drew on C-Lion1, went by land across the Baltic, and
+    // round by St Petersburg once the ferries were out of the corridors. Such a leg is searched as
+    // one only a cable can carry, the land drawn only when no chain is found. Without the
+    // corridors there is only the straight line, which says nothing of where the land goes.
+    const across = this.land && landPossible && !bridged ? this.mask?.alongPath(landPath) : undefined;
+    const european = fromPlace?.continent === "Europe" && toPlace?.continent === "Europe" && fromPlace.country !== "RU" && toPlace.country !== "RU";
+    const throughRussia = european && (across?.countryKm.get("RU") ?? 0) > RUSSIA_TRANSIT_KM;
+    const landCarries = landPossible && !(across && (across.longestKm >= SEA_CROSSING_KM || throughRussia));
+    const europeReach = !(landCarries && inEurope(fromPlace) && inEurope(toPlace));
+    // Within Europe a chain changes system only at a station in a country the leg starts or ends
+    // in. It still boards where the land took it and leaves where the land takes it on - Paris to
+    // Helsinki boards C-Lion1 at Rostock, and Helsinki to Paris leaves it there - but a change on
+    // a third country's shore is where the land would have carried the traffic instead: Frankfurt
+    // to Stockholm changed at Hanko, Oslo to Frankfurt at Blaabjerg, Warsaw to Tallinn at Logi.
+    // A chain that has left a system on such a shore walks on (the second plane of states).
+    const withinEurope = landCarries && fromPlace?.continent === "Europe" && toPlace?.continent === "Europe";
+    const starts = this.landingsNear(from, fromPlace, europeReach).slice(0, LANDING_CANDIDATES * 8);
 
     if (starts.length === 0) {
       return fallback;
@@ -1115,8 +1464,12 @@ export class CableGraph {
 
     // How far round a chain may go. Off the landmass any chain short of a wild detour beats
     // a line across open water; where land could carry the leg, only a chain close to the
-    // straight line, and short enough for the latency measured, beats the land.
-    let budget = landPossible ? direct * LAND_ALTERNATIVE_RATIO + LAND_ALTERNATIVE_SLACK_KM : direct * MAX_DETOUR_RATIO + MAX_DETOUR_SLACK_KM;
+    // straight line, and short enough for the latency measured, beats the land - unless the
+    // leg is a long one that land rarely carries (LONG_LAND_LEG_KM).
+    const russian = (fromPlace?.country === "RU" || toPlace?.country === "RU") && fromPlace?.continent !== "Africa" && toPlace?.continent !== "Africa";
+    const landOnly = LAND_ONLY_COUNTRIES.has(fromPlace?.country ?? "") || LAND_ONLY_COUNTRIES.has(toPlace?.country ?? "");
+    const landBudget = landCarries && (direct < LONG_LAND_LEG_KM || LAND_CONTINENTS.has(fromPlace?.continent ?? "") || russian || landOnly);
+    let budget = landBudget ? direct * LAND_ALTERNATIVE_RATIO + LAND_ALTERNATIVE_SLACK_KM : direct * MAX_DETOUR_RATIO + MAX_DETOUR_SLACK_KM;
 
     if (landPossible && options.rttMs !== undefined && options.rttMs >= MIN_RTT_EVIDENCE_MS) {
       budget = Math.min(budget, options.rttMs * FIBRE_KM_PER_RTT_MS * RTT_SLACK);
@@ -1130,7 +1483,8 @@ export class CableGraph {
     // station - so the chain changes system only at a named station, never at such a point.
     // Keyed by node alone, a third of all cable legs changed system mid-ocean.
     const stride = this.cableIds.size + 1;
-    const nodeOf = (state: number) => Math.floor(state / stride);
+    const plane = this.nodes.length * stride;
+    const nodeOf = (state: number) => Math.floor((state % plane) / stride);
     const cost = new Map<number, number>();
     const travelled = new Map<number, number>();
     const seaKm = new Map<number, number>();
@@ -1138,88 +1492,215 @@ export class CableGraph {
     const cameBy = new Map<number, { sea: boolean; cable?: string }>();
     const heap = new MinHeap();
     let best: { node: number; cost: number } | undefined;
+    // Between two places an intercontinental system reaches, the first pass keeps chains from
+    // changing system on islands only regional systems reach; with no chain that way, a second
+    // pass allows it (INTERCONTINENTAL_KM).
+    const strictFirst = fromPlace && toPlace && this.intercontinental.has(fromPlace.landmass) && this.intercontinental.has(toPlace.landmass);
+    // The hand-off surcharge first, and without it only when no chain was found with it, so that
+    // it changes which chain is drawn and never whether one is.
+    const plain: SearchPass = { strict: false, surcharged: false, open: false, walkShare: 1 };
+    // Between South America and Asia or Oceania the traffic crosses North America by land and
+    // the Pacific by cable - traces from Sao Paulo to Sydney, Singapore and Taipei, and back from
+    // Sydney, Taipei and Manila, all run by Miami or New York and Los Angeles (September 2026). A
+    // chain cannot walk across a continent between two of its systems, so the Caribbean coast to
+    // Panama stands in for that crossing, and the preferences against regional systems sent these
+    // legs round by Suez instead: the plain search draws them.
+    const continents = new Set([fromPlace?.continent, toPlace?.continent]);
+    const acrossPacific = continents.has("South America") && (continents.has("Asia") || continents.has("Oceania"));
+    const withSurcharge: SearchPass[] = strictFirst ? [{ ...plain, strict: true, surcharged: true }, { ...plain, surcharged: true }, { ...plain, strict: true }] : [{ ...plain, surcharged: true }];
+    const preferred = acrossPacific ? [] : withSurcharge;
+    // Where land could carry the leg, the plain search alone says whether a chain beats it, as it
+    // always has, and the others only choose which chain is drawn: each was one more chance to find
+    // a chain, and the land lost legs it should keep - Warsaw to Tallinn on Kaliningrad's cables,
+    // Riga to Brussels on seven festoons. Where only a cable can, the last passes are for a leg no
+    // chain was found for: with the islands LONG_HAUL_KM closes open again (Rennes to Cardiff by
+    // the Channel Islands, as production draws it), then walking further (LAST_RESORT_WALK_SHARE).
+    const passes: SearchPass[] = landCarries
+      ? [plain, ...preferred]
+      : [...preferred, plain, { ...plain, open: true }, { ...plain, open: true, walkShare: LAST_RESORT_WALK_SHARE }];
+    // The plain pass's chain on a leg land could carry, drawn when no preferred pass finds one.
+    let decided: { best: { node: number; cost: number }; cameFrom: Map<number, number>; cameBy: Map<number, { sea: boolean; cable?: string }> } | undefined;
+    // A chain that walks across open water no corridor goes round - from Gedser to Kolobrzeg,
+    // Belgrade to Bari, across the Bristol Channel - loses that walk, and the pass that found it
+    // runs again (WET_WALK_RETRIES); an earlier pass found nothing and would find nothing now.
+    // The walks it may not take, and the chain to draw if none stays dry: the cheapest, or a
+    // later one that crosses less water and walks no farther, with only its own states kept.
+    const banned = new Set<string>();
+    let kept: (NonNullable<typeof decided> & { km: number; walked: number }) | undefined;
+    let retries = 0;
+    const chainOf = (end: number) => {
+      const states: number[] = [];
 
-    for (const start of starts) {
-      const state = start.id * stride;
+      for (let state: number | undefined = end; state !== undefined; state = cameFrom.get(state)) {
+        states.push(state);
+      }
 
-      cost.set(state, start.cost);
-      travelled.set(state, start.km);
-      seaKm.set(state, 0);
-      heap.push(start.cost, state);
-    }
+      return states.reverse();
+    };
+    let index = 0;
 
-    while (heap.size > 0) {
-      const current = heap.pop();
-      const node = nodeOf(current.node);
-      const riding = current.node % stride;
-      const soFar = travelled.get(current.node) ?? 0;
+    while (index < passes.length) {
+      const { strict, surcharged, open, walkShare } = passes[index];
+      const surcharge = surcharged ? HANDOFF_KM : 0;
 
-      if (current.cost > (cost.get(current.node) ?? Number.POSITIVE_INFINITY) || soFar > budget) {
+      index += 1;
+
+      // A pass that found its chain stops with states still queued.
+      while (heap.size > 0) heap.pop();
+      cost.clear();
+      travelled.clear();
+      seaKm.clear();
+      cameFrom.clear();
+      cameBy.clear();
+
+      for (const start of starts.filter(({ id }) => !banned.has(`start:${id}`))) {
+        const state = start.id * stride;
+
+        cost.set(state, start.cost);
+        travelled.set(state, start.km);
+        seaKm.set(state, 0);
+        heap.push(start.cost, state);
+      }
+
+      while (heap.size > 0) {
+        const current = heap.pop();
+        const node = nodeOf(current.node);
+        const riding = current.node % stride;
+        const walkingOn = current.node >= plane;
+        const soFar = travelled.get(current.node) ?? 0;
+
+        if (current.cost > (cost.get(current.node) ?? Number.POSITIVE_INFINITY) || soFar > budget) {
+          continue;
+        }
+
+        if (current.cost > (best?.cost ?? Number.POSITIVE_INFINITY)) {
+          break;
+        }
+
+        const exit = banned.has(`exit:${node}`) ? undefined : this.attachmentCost(to, toPlace, node, europeReach);
+        // A regional system's station in one of the leg's own countries is that country's link.
+        const stationCountry = this.places.get(node)?.country;
+        const atEndpoint = stationCountry !== undefined && (stationCountry === fromPlace?.country || stationCountry === toPlace?.country);
+
+        if (exit !== undefined) {
+          const total = current.cost + exit.cost + (this.shortSystems.has(riding) && !atEndpoint ? surcharge : 0);
+          const atSea = seaKm.get(current.node) ?? 0;
+
+          // A chain that walks farther overland than the whole straight line is not a way
+          // across the water; it is a way round it, along some coast's own cable. Where land
+          // could carry the leg, a chain also has to be mostly sea to be worth more than the
+          // land; off the landmass any crossing is the crossing there is, however short
+          // (London to Karlsruhe crosses the Channel once, over a few dozen kilometres).
+          if (
+            soFar + exit.km <= budget &&
+            soFar - atSea + exit.km <= direct * (landCarries ? MAX_WALK_SHARE : walkShare) &&
+            atSea >= (landCarries ? direct * MIN_SEA_SHARE : 0) &&
+            atSea >= water.longestKm * MIN_CROSSING_COVER &&
+            (!best || total < best.cost)
+          ) {
+            best = { node: current.node, cost: total };
+          }
+        }
+
+        // A station on a piece of land neither hop stands on: a way through only as
+        // LONG_HAUL_KM allows and, on a strict pass where no intercontinental system lands,
+        // only without a change of system.
+        const island = this.transitLandmass(node, fromPlace, toPlace);
+
+        if (!open && island !== undefined && !this.longHaul.has(island) && !this.domestic.has(island)) {
+          continue;
+        }
+
+        const throughOnly = strict && island !== undefined && !this.intercontinental.has(island);
+
+        for (const edge of this.nodes[node].edges) {
+          if ((edge.cable && this.closed.has(edge.cable) && this.closed.get(edge.cable) !== legPair) || (!edge.sea && banned.has(walkKey(node, edge.to)))) {
+            continue;
+          }
+
+          const system = edge.sea && edge.cable ? (this.cableIds.get(edge.cable) ?? 0) : 0;
+          const handoff = !atEndpoint && system !== riding && (this.shortSystems.has(riding) || this.shortSystems.has(system)) ? surcharge : 0;
+          const atSeaCost = edge.cable && owned.has(edge.cable) ? edge.km * OWNED_DISCOUNT : edge.km;
+          const next = current.cost + handoff + (edge.sea ? atSeaCost : edge.km * BRIDGE_PENALTY);
+
+          if (riding !== 0 && system !== 0 && system !== riding && this.nodes[node].name === undefined) {
+            continue;
+          }
+
+          if (throughOnly && (system === 0 || system !== riding)) {
+            continue;
+          }
+
+          const leaving = withinEurope && !atEndpoint && riding !== 0 && system !== riding;
+
+          if ((leaving && system !== 0) || (walkingOn && system !== 0 && system !== riding)) {
+            continue;
+          }
+
+          const state = (walkingOn || leaving ? plane : 0) + edge.to * stride + system;
+
+          if (next < (cost.get(state) ?? Number.POSITIVE_INFINITY)) {
+            cost.set(state, next);
+            travelled.set(state, soFar + edge.km);
+            seaKm.set(state, (seaKm.get(current.node) ?? 0) + (edge.sea ? edge.km : 0));
+            cameFrom.set(state, current.node);
+            cameBy.set(state, { sea: edge.sea, cable: edge.cable });
+            heap.push(next, state);
+          }
+        }
+      }
+
+      const chain = best ? chainOf(best.node) : [];
+      const wet = chain.length > 0 ? this.wetWalks(from, to, toPlace, chain.map(nodeOf), chain.map((state) => cameBy.get(state)?.sea ?? false), europeReach) : undefined;
+
+      if (best && wet) {
+        if (wet.km < (kept?.km ?? Number.POSITIVE_INFINITY) && wet.walked <= (kept?.walked ?? Number.POSITIVE_INFINITY) && !wet.roundabout()) {
+          kept = {
+            km: wet.km,
+            walked: wet.walked,
+            best,
+            cameFrom: new Map(chain.slice(1).map((state, step) => [state, chain[step]])),
+            cameBy: new Map(chain.map((state) => [state, cameBy.get(state) ?? { sea: false }]))
+          };
+        }
+
+        best = undefined;
+
+        if (retries < WET_WALK_RETRIES) {
+          wet.keys.forEach((walk) => banned.add(walk));
+          retries += 1;
+          index -= 1;
+          continue;
+        }
+      }
+
+      if (landCarries && !decided) {
+        if (!best) break;
+        decided = { best, cameFrom: new Map(cameFrom), cameBy: new Map(cameBy) };
+        best = undefined;
         continue;
       }
 
-      if (current.cost > (best?.cost ?? Number.POSITIVE_INFINITY)) {
-        break;
-      }
+      if (best) break;
+    }
 
-      const exit = this.attachmentCost(to, toPlace, node);
+    // Where the land carries the leg it is the way when every chain found walked across the sea.
+    const keptChain = landCarries ? undefined : kept;
+    const drawn = best ? undefined : (decided ?? keptChain);
 
-      if (exit !== undefined) {
-        const total = current.cost + exit.cost;
-        const atSea = seaKm.get(current.node) ?? 0;
-
-        // A chain that walks farther overland than the whole straight line is not a way
-        // across the water; it is a way round it, along some coast's own cable. Where land
-        // could carry the leg, a chain also has to be mostly sea to be worth more than the
-        // land; off the landmass any crossing is the crossing there is, however short
-        // (London to Karlsruhe crosses the Channel once, over a few dozen kilometres).
-        if (
-          soFar + exit.km <= budget &&
-          soFar - atSea + exit.km <= direct * (landPossible ? MAX_WALK_SHARE : 1) &&
-          atSea >= (landPossible ? direct * MIN_SEA_SHARE : 0) &&
-          atSea >= water.longestKm * MIN_CROSSING_COVER &&
-          (!best || total < best.cost)
-        ) {
-          best = { node: current.node, cost: total };
-        }
-      }
-
-      for (const edge of this.nodes[node].edges) {
-        if (edge.cable && this.closed.has(edge.cable) && this.closed.get(edge.cable) !== legPair) {
-          continue;
-        }
-
-        const next = current.cost + (edge.sea ? (edge.cable && owned.has(edge.cable) ? edge.km * OWNED_DISCOUNT : edge.km) : edge.km * BRIDGE_PENALTY);
-        const system = edge.sea && edge.cable ? (this.cableIds.get(edge.cable) ?? 0) : 0;
-
-        if (riding !== 0 && system !== 0 && system !== riding && this.nodes[node].name === undefined) {
-          continue;
-        }
-
-        const state = edge.to * stride + system;
-
-        if (next < (cost.get(state) ?? Number.POSITIVE_INFINITY)) {
-          cost.set(state, next);
-          travelled.set(state, soFar + edge.km);
-          seaKm.set(state, (seaKm.get(current.node) ?? 0) + (edge.sea ? edge.km : 0));
-          cameFrom.set(state, current.node);
-          cameBy.set(state, { sea: edge.sea, cable: edge.cable });
-          heap.push(next, state);
-        }
-      }
+    if (drawn) {
+      best = drawn.best;
+      cameFrom.clear();
+      cameBy.clear();
+      drawn.cameFrom.forEach((value, key) => cameFrom.set(key, value));
+      drawn.cameBy.forEach((value, key) => cameBy.set(key, value));
     }
 
     if (!best) {
       return fallback;
     }
 
-    const states: number[] = [];
-
-    for (let state: number | undefined = best.node; state !== undefined; state = cameFrom.get(state)) {
-      states.push(state);
-    }
-
-    states.reverse();
+    const states = chainOf(best.node);
     const ids = states.map(nodeOf);
     const at = (id: number): LatLng => [this.nodes[id].lat, this.nodes[id].lng];
 
