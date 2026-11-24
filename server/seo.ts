@@ -1,19 +1,25 @@
 import { readFile } from "node:fs/promises";
 import type { Request, Response } from "express";
+import { languagePages, type Lang } from "../src/lib/i18n";
 
 const siteName = "Nangman Road";
-const pageTitle = "Nangman Road | Install-free Network Route Visualizer";
-const pageDescription =
-  "Visualize Traceroute and MTR-style network routes from nearby distributed probes with an install-free browser experience.";
+const pageDetails = {
+  en: {
+    locale: "en_US",
+    intro: "Explore network routes to a domain or IP address with Traceroute and MTR. A nearby network probe measures the route to your target. View each hop in your browser without installing anything.",
+    features: ["Traceroute-style route visualization", "MTR-style network measurement display", "Measured from nearby distributed network probes", "Install-free browser experience"]
+  },
+  ko: {
+    locale: "ko_KR",
+    intro: "트레이스라우트(Traceroute)와 MTR로 도메인이나 IP 주소까지의 네트워크 경로를 살펴보세요. 경로 측정은 가까운 측정 지점에서 시작합니다. 별도 설치 없이 브라우저에서 각 홉의 위치와 지연 시간을 확인할 수 있습니다.",
+    features: ["트레이스라우트 경로 시각화", "MTR 측정 결과 표시", "가까운 측정 지점에서 출발", "설치 없이 브라우저에서 이용"]
+  }
+};
 // A raster, and not the SVG that stood here: no link-preview scraper - Slack, KakaoTalk,
 // X, Facebook, Discord - renders an SVG, so the card came up blank wherever the site was
 // shared. JPEG over PNG because the picture is all soft gradient, which costs 750 KB
 // lossless and 76 KB here.
 const imagePath = "/og-image.jpg";
-// Built here rather than inside the tag below: a template literal nested in another
-// reads as one expression and is two.
-const imageAlt = `${siteName} - ${pageDescription}`;
-
 let cachedIndexHtml: Promise<string> | undefined;
 
 function escapeHtml(value: string) {
@@ -80,38 +86,60 @@ export function siteUrlForRequest(req: Request) {
   return configuredSiteUrl() ?? requestSiteUrl(req);
 }
 
-function structuredData(siteUrl: string, imageUrl: string) {
+const alternatePaths = {
+  en: languagePages.en.path,
+  ko: languagePages.ko.path,
+  "x-default": languagePages.en.path
+};
+
+function alternateLinks(siteUrl: string, tag: "link" | "xhtml:link") {
+  return Object.entries(alternatePaths).map(([lang, path]) =>
+    `<${tag} rel="alternate" hreflang="${lang}" href="${escapeXml(siteUrl + path)}" />`
+  );
+}
+
+function structuredData(lang: Lang, canonicalUrl: string, imageUrl: string) {
   return {
     "@context": "https://schema.org",
     "@type": "WebApplication",
     name: siteName,
-    url: `${siteUrl}/`,
+    url: canonicalUrl,
+    inLanguage: lang,
     image: imageUrl,
     applicationCategory: "NetworkingApplication",
     operatingSystem: "Any",
-    description: pageDescription,
+    description: languagePages[lang].description,
     offers: {
       "@type": "Offer",
       price: "0",
       priceCurrency: "USD"
     },
-    featureList: [
-      "Traceroute-style route visualization",
-      "MTR-style network measurement display",
-      "Measured from nearby distributed network probes",
-      "Install-free browser experience"
-    ]
+    featureList: pageDetails[lang].features
   };
 }
 
-function dynamicHead(req: Request, res: Response) {
+function dynamicHead(req: Request, res: Response, lang: Lang) {
   const siteUrl = siteUrlForRequest(req);
-  const canonicalUrl = `${siteUrl}/`;
+  const page = languagePages[lang];
+  const canonicalUrl = siteUrl + page.path;
+  const title = escapeHtml(page.title);
+  const description = escapeHtml(page.description);
+  const imageAlt = `${siteName} - ${page.description}`;
   const imageUrl = `${siteUrl}${imagePath}`;
   const nonce = typeof res.locals.cspNonce === "string" ? res.locals.cspNonce : undefined;
   const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : "";
 
+  const json = JSON.stringify(structuredData(lang, canonicalUrl, imageUrl)).replaceAll("<", "\\u003c");
+
   return [
+    `<title>${title}</title>`,
+    `<meta name="description" content="${description}" />`,
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:description" content="${description}" />`,
+    `<meta property="og:locale" content="${pageDetails[lang].locale}" />`,
+    `<meta name="twitter:title" content="${title}" />`,
+    `<meta name="twitter:description" content="${description}" />`,
+    ...alternateLinks(siteUrl, "link"),
     `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`,
     `<meta property="og:url" content="${escapeHtml(canonicalUrl)}" />`,
     `<meta property="og:image" content="${escapeHtml(imageUrl)}" />`,
@@ -120,26 +148,30 @@ function dynamicHead(req: Request, res: Response) {
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
     `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />`,
-    `<script type="application/ld+json"${nonceAttribute}>${JSON.stringify(structuredData(siteUrl, imageUrl))}</script>`
+    `<script type="application/ld+json"${nonceAttribute}>${json}</script>`
   ].join("\n    ");
 }
 
-function insertDynamicHead(html: string, head: string) {
-  const marker = "</head>";
-  const markerIndex = html.indexOf(marker);
-
-  if (markerIndex === -1) {
-    return html;
-  }
-
-  return `${html.slice(0, markerIndex)}    ${head}\n  ${html.slice(markerIndex)}`;
+function introduction(lang: Lang) {
+  return [
+    '<div id="root"><main style="min-height:100vh;display:grid;place-content:center;padding:1.5rem;background:#050812;color:#f8fbff;text-align:center">',
+    '<h1 style="font-size:2rem;font-weight:600">Nangman Road</h1>',
+    `<p style="max-width:40rem;margin:1rem auto;line-height:1.6">${escapeHtml(pageDetails[lang].intro)}</p>`,
+    "</main></div>"
+  ].join("\n");
 }
 
 export async function sendIndexHtml(req: Request, res: Response, indexPath: string) {
   cachedIndexHtml ??= readFile(indexPath, "utf8");
   const html = await cachedIndexHtml;
 
-  res.type("html").send(insertDynamicHead(html, dynamicHead(req, res)));
+  const lang = req.path === languagePages.ko.path ? "ko" : "en";
+  const page = html
+    .replace('<html lang="en">', `<html lang="${lang}">`)
+    .replace(/<!--page-head-->[\s\S]*?<!--\/page-head-->/, () => dynamicHead(req, res, lang))
+    .replace('<div id="root"></div>', () => introduction(lang));
+
+  res.type("html").send(page);
 }
 
 export function sendRobotsTxt(req: Request, res: Response) {
@@ -150,15 +182,19 @@ export function sendRobotsTxt(req: Request, res: Response) {
 
 export function sendSitemapXml(req: Request, res: Response) {
   const siteUrl = siteUrlForRequest(req);
-  const homeUrl = `${siteUrl}/`;
-  const xml = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  const links = alternateLinks(siteUrl, "xhtml:link");
+  const urls = Object.values(languagePages).map(({ path }) => [
     "  <url>",
-    `    <loc>${escapeXml(homeUrl)}</loc>`,
+    `    <loc>${escapeXml(siteUrl + path)}</loc>`,
+    ...links,
     "    <changefreq>weekly</changefreq>",
     "    <priority>1.0</priority>",
-    "  </url>",
+    "  </url>"
+  ].join("\n"));
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+    ...urls,
     "</urlset>"
   ].join("\n");
 

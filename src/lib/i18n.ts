@@ -6,6 +6,29 @@ export type Lang = "en" | "ko";
 
 export const LANG_STORAGE_KEY = "nangman.lang";
 
+export const languagePages = {
+  en: {
+    path: "/",
+    title: "Nangman Road | Install-free Network Route Visualizer",
+    description: "Visualize Traceroute and MTR-style network routes from nearby distributed probes with an install-free browser experience."
+  },
+  ko: {
+    path: "/ko",
+    title: "Nangman Road | 트레이스라우트·MTR 경로 시각화",
+    description: "가까운 측정 지점에서 도메인이나 IP 주소까지의 네트워크 경로를 트레이스라우트와 MTR로 살펴보세요. 설치 없이 브라우저에서 경로와 홉별 지연 시간을 확인할 수 있습니다."
+  }
+};
+
+export function languageForPath(pathname: string, preferred: Lang): Lang {
+  return pathname === languagePages.ko.path ? "ko" : preferred;
+}
+
+export function urlForLanguage(lang: Lang, { pathname, search, hash }: Pick<Location, "pathname" | "search" | "hash">) {
+  if (pathname !== languagePages.en.path && pathname !== languagePages.ko.path) return undefined;
+  if (pathname === languagePages[lang].path) return undefined;
+  return languagePages[lang].path + search + hash;
+}
+
 const MESSAGES: Record<Lang, Record<string, string>> = {
   en: {
     "search.eyebrow": "Network route search",

@@ -131,6 +131,18 @@ app.get("/api/measurements/:id/events", (req, res) => {
 // is a few megabytes of JSON that shrinks to a fifth compressed; the hashed bundles never
 // change under their name, the data files change only with a data refresh.
 app.use(compression());
+app.get(/^(.*)$/, (req, res, next) => {
+  // Express decodes the wildcard, just as static file serving decodes the requested filename.
+  const filename = path.posix.normalize(req.params[0]).toLowerCase();
+  const query = req.url.slice(req.path.length);
+  if (filename === "/index.html") {
+    res.redirect(301, "/" + query);
+  } else if (req.path === "/ko/") {
+    res.redirect(301, "/ko" + query);
+  } else {
+    next();
+  }
+});
 app.use(
   express.static(clientDistDirectory, {
     index: false,
@@ -150,6 +162,7 @@ app.get("*", (req, res) => {
     return;
   }
 
+  if (req.path !== "/" && req.path !== "/ko") res.status(404);
   sendIndexHtml(req, res, clientIndexPath).catch(() => {
     res.status(404).json({ error: "Not found." });
   });
@@ -159,7 +172,7 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found." });
 });
 
-app.listen(port, () => {
+export const server = app.listen(port, () => {
   console.log(`Nangman Road listening on http://127.0.0.1:${port}`);
   console.log(peeringDbSummary());
 });

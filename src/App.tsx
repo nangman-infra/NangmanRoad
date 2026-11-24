@@ -16,7 +16,7 @@ import { warmRouter } from "./lib/routeClient";
 import { asksForBudget, fetchBudget, type BudgetReport } from "./lib/budgetReport";
 import { HOP_LIMIT, ranOutOfHops, tcpRetry } from "./lib/traceLimits";
 import { TerminalOutput } from "./components/TerminalOutput";
-import { LANG_STORAGE_KEY, LangContext, detectLang, setCurrentLang, t, type Lang } from "./lib/i18n";
+import { LANG_STORAGE_KEY, LangContext, detectLang, languageForPath, languagePages, setCurrentLang, t, urlForLanguage, type Lang } from "./lib/i18n";
 
 const initialTarget = "";
 // What NOTICE obliges anyone redistributing this work to carry, shown here as well: the
@@ -173,7 +173,7 @@ export function App() {
   // Set for the plain functions before anything renders in it, then kept in state so the
   // page re-renders in the new language.
   const [lang, setLang] = useState<Lang>(() => {
-    const initial = detectLang();
+    const initial = languageForPath(globalThis.location.pathname, detectLang());
 
     setCurrentLang(initial);
 
@@ -193,6 +193,10 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.lang = lang;
+    document.title = languagePages[lang].title;
+    document.querySelector('meta[name="description"]')?.setAttribute("content", languagePages[lang].description);
+    const url = urlForLanguage(lang, globalThis.location);
+    if (url) globalThis.history.replaceState(globalThis.history.state, "", url);
   }, [lang]);
   const closeEventsRef = useRef<(() => void) | undefined>();
   const journeyStartedAtRef = useRef(0);
