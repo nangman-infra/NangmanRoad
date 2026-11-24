@@ -1,5 +1,5 @@
 import Globe, { type GlobeInstance } from "globe.gl";
-import { AdditiveBlending, BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, Mesh, MeshBasicMaterial, NormalBlending, type PerspectiveCamera, PlaneGeometry, Points, ShaderMaterial, Vector3 } from "three";
+import { AdditiveBlending, BufferGeometry, CanvasTexture, Color, Float32BufferAttribute, Mesh, MeshBasicMaterial, type MeshLambertMaterial, NormalBlending, type PerspectiveCamera, PlaneGeometry, Points, ShaderMaterial, Vector3 } from "three";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
@@ -799,7 +799,17 @@ function createSession(): Session {
     // A plane of its own each time, never one shared between them: the layer disposes the
     // geometry of every object it drops, and a shared one would be pulled out from under
     // the marks still using it. Four vertices apiece is nothing to pay for that.
-    .customThreeObject(() => new Mesh(new PlaneGeometry(1, 1), session?.halos[session.theme]))
+    // After the land, whatever the camera's angle: the glow and the caps are both see-through,
+    // and three.js draws those farthest first by the middle of each - Korea's cap, its middle a
+    // hair nearer the camera than Suwon's glow, went on after it and covered it everywhere but
+    // the sea.
+    .customThreeObject(() => {
+      const halo = new Mesh(new PlaneGeometry(1, 1), session?.halos[session.theme]);
+
+      halo.renderOrder = 1;
+
+      return halo;
+    })
     .customThreeObjectUpdate((object: object, datum: object) => {
       const halo = object as Mesh;
       const point = datum as GlobePoint;
@@ -865,6 +875,8 @@ function createSession(): Session {
     (globalThis as { __globe?: GlobeInstance }).__globe = globe;
     (globalThis as { __globeSession?: Session }).__globeSession = current;
   }
+
+  globe.scene().onBeforeRender = () => unlitLabels(current);
 
   const started = performance.now();
   const tick = () => {
@@ -953,6 +965,28 @@ function neon(current: Session) {
     if (material && width > 2 && (material.resolution.x !== width || material.resolution.y !== height)) {
       material.resolution.set(width, height);
     }
+  }
+}
+
+// A name and its dot are ink, but three-globe gives them a lit material, and the globe's one
+// light shines from above the North Pole: the same white came out white at Seoul and grey at
+// Curitiba, so an end in the southern hemisphere looked faded beside the one it started from.
+// Each name's material is traded for an unlit one of the same colour, and three-globe goes on
+// setting colour and opacity on whichever it holds. Names are rebuilt at every step of zoom,
+// so this runs just before each frame is drawn: a lit one is never drawn, and its shader is
+// never compiled.
+function unlitLabels(current: Session) {
+  for (const entry of current.globe.labelsData() as Array<GlobePoint & { __threeObjLabel?: { children: Mesh[] } }>) {
+    const [dot, text] = entry.__threeObjLabel?.children ?? [];
+    const lit = text?.material as MeshLambertMaterial | undefined;
+
+    if (!dot || !lit?.isMeshLambertMaterial) continue;
+
+    const ink = new MeshBasicMaterial({ color: lit.color, transparent: lit.transparent, opacity: lit.opacity, side: lit.side });
+
+    dot.material = ink;
+    text.material = ink;
+    lit.dispose();
   }
 }
 
