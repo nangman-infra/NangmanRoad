@@ -129,7 +129,7 @@ function dynamicHead(req: Request, res: Response, lang: Lang) {
   const nonce = typeof res.locals.cspNonce === "string" ? res.locals.cspNonce : undefined;
   const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : "";
 
-  const json = JSON.stringify(structuredData(lang, canonicalUrl, imageUrl)).replaceAll("<", "\\u003c");
+  const json = JSON.stringify(structuredData(lang, canonicalUrl, imageUrl)).replaceAll("<", String.raw`\u003c`);
 
   return [
     `<title>${title}</title>`,
