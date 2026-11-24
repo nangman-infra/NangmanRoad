@@ -77,7 +77,7 @@ export default defineConfig([
     languageOptions: { globals: globals.worker }
   },
   {
-    files: ["{server,scripts,e2e}/**/*", "**/*.test.*", "*.{ts,mts,tsx,js,mjs}"],
+    files: ["{server,scripts,e2e,bench}/**/*", "**/*.test.*", "*.{ts,mts,tsx,js,mjs}"],
     languageOptions: { globals: globals.nodeBuiltin }
   }
 ]);
