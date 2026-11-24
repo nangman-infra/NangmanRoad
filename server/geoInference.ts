@@ -253,8 +253,9 @@ const NOT_A_SITE_CODE = new Set([
   "backbone", "int", "ext", "ipv", "trunk", "ether", "gig", "ten", "hundred", "bond", "team", "wan", "lan",
   "cloud", "spine", "leaf", "fabric", "prod", "dev", "test", "stage", "lab", "node", "server", "srv", "vps",
   "mgt", "oob", "rack", "room", "floor", "site", "colo",
-  // Seen on the list and not places: Tata's and Hetzner's router roles, an exchange's own name.
-  "tcore", "rdev", "linx"
+  // Seen on the list and not places: Tata's and Hetzner's router roles, an exchange's own name,
+  // Leaseweb's "hosted-by" customer names and the customer Arelion names a port after.
+  "tcore", "rdev", "linx", "hosted", "ionos"
 ]);
 
 interface SiteCodeSighting {
@@ -624,7 +625,21 @@ const cityHints: Array<GeoPoint & { aliases: string[]; domains?: string[] }> = [
   { city: "Tokyo", country: "JP", latitude: 35.6762, longitude: 139.6503, aliases: ["tky"], domains: ["twelve99.net"] },
   { city: "Dallas", country: "US", latitude: 32.7767, longitude: -96.797, aliases: ["dls"], domains: ["twelve99.net"] },
   { city: "Ashburn", country: "US", latitude: 39.0438, longitude: -77.4874, aliases: ["ash"], domains: ["twelve99.net"] },
-  { city: "San Jose", country: "US", latitude: 37.3382, longitude: -121.8863, aliases: ["sjo"], domains: ["twelve99.net"] }
+  { city: "San Jose", country: "US", latitude: 37.3382, longitude: -121.8863, aliases: ["sjo"], domains: ["twelve99.net"] },
+  // Arelion's own looking glass (lg.twelve99.net) lists "nug-b2": "Nuremberg (Hetzner)".
+  { city: "Nuremberg", country: "DE", latitude: 49.4521, longitude: 11.0767, aliases: ["nug"], domains: ["twelve99.net"] },
+  // IIJ names its sites city first (tky001, osk004, ngy006: CAIDA's iij.net naming list); a
+  // published trace from Osaka reaches osk004bb00 at 1.5 ms and tky001bb10 at 7.5 ms.
+  { city: "Tokyo", country: "JP", latitude: 35.6762, longitude: 139.6503, aliases: ["tky"], domains: ["iij.net"] },
+  // Telstra International: ulco01/ulco-core02 face London ports of other networks in CAIDA's
+  // telstraglobal.net list (he.net lon1, Telia ldn, Cogent lon02, BT uk-lon1); hkmi01 is the
+  // Hong Kong hop in published traces, handing off to CHINANET-HK; hkck shares its "hk" prefix
+  // and appears on the same Hong Kong paths.
+  { city: "London", country: "GB", latitude: 51.5072, longitude: -0.1276, aliases: ["ulco"], domains: ["telstraglobal.net"] },
+  { city: "Hong Kong", country: "HK", latitude: 22.3193, longitude: 114.1694, aliases: ["hkmi", "hkck"], domains: ["telstraglobal.net"] },
+  // Tube-Hosting (AS49581) lists SkyLink Data Center, Eygelshoven on PeeringDB; its routers
+  // carry the site as a label (cr1.egh.as49581.net). "egh" is also an Egyptian airport.
+  { city: "Eygelshoven", country: "NL", latitude: 50.8917, longitude: 6.0583, aliases: ["egh"], domains: ["as49581.net"] }
 ];
 
 const metroAreas: Array<GeoPoint & { key: string; cities: string[]; radiusKm: number; rttMs: number }> = [

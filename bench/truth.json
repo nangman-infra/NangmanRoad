@@ -230,6 +230,31 @@
       "\\.slo\\.gb\\.oneandone",
       "Slough",
       "IONOS"
+    ],
+    [
+      "nug-b\\d",
+      "Nuremberg",
+      "Arelion"
+    ],
+    [
+      "tky\\d{3}[a-z]+\\d*\\.iij\\.net",
+      "Tokyo",
+      "IIJ"
+    ],
+    [
+      "ulco(\\d|-core)",
+      "London",
+      "Telstra"
+    ],
+    [
+      "hk(mi|ck)(\\d|-core)",
+      "Hong Kong",
+      "Telstra"
+    ],
+    [
+      "\\.egh\\.as49581",
+      "Eygelshoven",
+      "Tube-Hosting"
     ]
   ],
   "sameMetro": [

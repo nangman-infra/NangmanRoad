@@ -1321,7 +1321,14 @@ describe("research network site codes", () => {
     ["core11.hel1.hetzner.com", "Helsinki", "FI"],
     // Tata's routers at its Toyohashi landing carry the city's own name; IONOS's UK backbone its site code.
     ["if-ae-58-2.tcore1.av3-toyohashi.as6453.net", "Toyohashi", "JP"],
-    ["bb-d.ba.slo.gb.oneandone.net", "Slough", "GB"]
+    ["bb-d.ba.slo.gb.oneandone.net", "Slough", "GB"],
+    // Codes confirmed from the candidate list (2026-11-24), each scoped to its operator.
+    ["nug-b2-link.ip.twelve99.net", "Nuremberg", "DE"],
+    ["tky001bb00.IIJ.Net", "Tokyo", "JP"],
+    ["i-1001.ulco01.telstraglobal.net", "London", "GB"],
+    ["i-92.hkmi01.telstraglobal.net", "Hong Kong", "HK"],
+    ["i-15632.hkck-core01.telstraglobal.net", "Hong Kong", "HK"],
+    ["pletx-cr1-egh.cr1.egh.as49581.net", "Eygelshoven", "NL"]
   ];
 
   it.each(cases)("reads %s as %s", async (hostname, city, country) => {
