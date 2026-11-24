@@ -1,0 +1,4 @@
+.env
+server/data/asOrgs.json
+server/data/ixpPrefixes.json
+server/data/peeringdbCities.json
